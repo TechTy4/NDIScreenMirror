@@ -7,12 +7,25 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		47453F903048D23D00310D68 /* NDIScreenMirror.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NDIScreenMirror.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		47453F903048D23D00310D68 /* NDIScreenMirror.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = NDIScreenMirror.app; path = "Sanctuary NDI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A10000023048D23D00310D68 /* Exceptions for "NDIScreenMirror" folder in "NDIScreenMirror" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 47453F8F3048D23D00310D68 /* NDIScreenMirror */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		47453F923048D23D00310D68 /* NDIScreenMirror */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A10000023048D23D00310D68 /* Exceptions for "NDIScreenMirror" folder in "NDIScreenMirror" target */,
+			);
 			path = NDIScreenMirror;
 			sourceTree = "<group>";
 		};
@@ -55,6 +68,7 @@
 				47453F8C3048D23D00310D68 /* Sources */,
 				47453F8D3048D23D00310D68 /* Frameworks */,
 				47453F8E3048D23D00310D68 /* Resources */,
+				A10000013048D23D00310D68 /* Embed NDI Runtime */,
 			);
 			buildRules = (
 			);
@@ -113,6 +127,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A10000013048D23D00310D68 /* Embed NDI Runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Embed NDI Runtime";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/libndi.dylib",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nSOURCE=\"${NDI_RUNTIME_PATH:-}\"\nif [ -z \"$SOURCE\" ]; then\n  for CANDIDATE in \\\n    \"$SRCROOT/Vendor/NDI/libndi.dylib\" \\\n    \"/Applications/NDI Scan Converter.app/Contents/Frameworks/libndi.dylib\" \\\n    \"/Applications/NDI Virtual Input.app/Contents/Frameworks/libndi.dylib\" \\\n    \"/usr/local/lib/libndi.dylib\"; do\n    if [ -f \"$CANDIDATE\" ]; then SOURCE=\"$CANDIDATE\"; break; fi\n  done\nfi\nif [ ! -f \"$SOURCE\" ]; then\n  echo \"error: NDI runtime not found. Install the NDI SDK/Tools or set NDI_RUNTIME_PATH.\" >&2\n  exit 1\nfi\nDEST=\"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/libndi.dylib\"\nmkdir -p \"$(dirname \"$DEST\")\"\n/usr/bin/ditto \"$SOURCE\" \"$DEST\"\n/usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"$DEST\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		47453F8C3048D23D00310D68 /* Sources */ = {
@@ -244,16 +277,23 @@
 		47453F9C3048D23F00310D68 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = NDIScreenMirror/SanctuaryNDI.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = K93WTRX9F4;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "\"/Library/NDI SDK for Apple/include\"";
+				INFOPLIST_FILE = NDIScreenMirror/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Sanctuary NDI";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Sanctuary NDI needs Screen Recording access to mirror your selected display over NDI.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -267,17 +307,18 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = PVCTech.NDIScreenMirror;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0.2;
+				NDI_RUNTIME_PATH = "/Library/NDI SDK for Apple/lib/macOS/libndi.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sanctuary.SanctuaryNDI;
+				PRODUCT_NAME = "Sanctuary NDI";
 				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "NDIScreenMirror/NDIScreenMirror-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
@@ -288,16 +329,23 @@
 		47453F9D3048D23F00310D68 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = NDIScreenMirror/SanctuaryNDI.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = K93WTRX9F4;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "\"/Library/NDI SDK for Apple/include\"";
+				INFOPLIST_FILE = NDIScreenMirror/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Sanctuary NDI";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Sanctuary NDI needs Screen Recording access to mirror your selected display over NDI.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -311,17 +359,18 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = PVCTech.NDIScreenMirror;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0.2;
+				NDI_RUNTIME_PATH = "/Library/NDI SDK for Apple/lib/macOS/libndi.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sanctuary.SanctuaryNDI;
+				PRODUCT_NAME = "Sanctuary NDI";
 				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "NDIScreenMirror/NDIScreenMirror-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
