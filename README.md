@@ -1,6 +1,6 @@
 # Sanctuary NDI
 
-Sanctuary NDI mirrors one selected Mac display to the local network as an NDI® source. It is a native, menu-bar-only macOS utility built for a shared sanctuary/school Mac: whatever is visible on the chosen physical display is sent as High Bandwidth NDI video.
+Sanctuary NDI is a native macOS room-startup utility for a shared sanctuary/school Mac. At every login, a friendly wizard asks whether the projector should show ProPresenter or a selected physical monitor, optionally duplicates the monitor feed on a confidence display, and selects the matching NDI source on a configured Magewell receiver.
 
 NDI® is a registered trademark of Vizrt NDI AB. Learn more at [ndi.video](https://ndi.video).
 
@@ -8,42 +8,49 @@ NDI® is a registered trademark of Vizrt NDI AB. Learn more at [ndi.video](https
 
 1. Build the Release app with `./scripts/build-release.sh`, or open the packaged DMG.
 2. Drag Sanctuary NDI.app onto the Applications shortcut.
-3. Open it once from Applications. Its radiowave/display icon appears in the menu bar; no Dock icon or normal window remains open.
+3. Open it once from Applications. Its status icon appears in the menu bar and the Startup Wizard opens. A Dock icon is present while the wizard or Settings is open and disappears during normal menu-bar-only operation.
 
 The packaged build is signed with the first available Apple Development certificate so macOS can retain Screen Recording permission across rebuilds. It is intended for this controlled Mac and does not require a paid developer membership. Control-click the installed app and choose Open the first time; see [DEPLOYMENT.md](DEPLOYMENT.md). Public distribution would require a Developer ID Application certificate and notarization.
 
-## First run
+## Startup Wizard
 
-Screen Recording permission is required because the app reads the pixels of the selected display. Open the menu-bar item, choose Request Screen Recording Permission, then enable Sanctuary NDI in System Settings → Privacy & Security → Screen Recording. If macOS requests it, quit and reopen the app.
+The non-closable (but minimizable) wizard appears on every launch and asks:
 
-The menu shows a useful status while permission or a selected display is missing; it does not silently broadcast another screen.
+1. Should the projector show ProPresenter or the configured input monitor?
+2. In monitor mode, should the feed also be duplicated fullscreen on the configured confidence monitor?
 
-## Choosing or replacing a monitor
+ProPresenter mode requires ProPresenter to be running. Monitor mode requires Screen Recording permission and starts the High Bandwidth NDI sender before asking the Magewell to switch. Errors remain in the wizard with actionable recovery instead of silently selecting another source.
 
-Open the menu-bar item and select the physical display with the Mirror Display picker. The selection changes immediately and restarts the sender on that display. The choice is saved using the Core Graphics display UUID plus vendor, model, serial, name, and native resolution fallbacks, so ordinary monitor rearrangement does not lose it.
+## Display configuration
+
+Settings → Displays assigns the input monitor and confidence monitor. The friendly input label defaults to **Left/Projector Monitor** and can be changed in General. Display choices are saved using the Core Graphics display UUID plus vendor, model, serial, name, and native-resolution fallbacks.
 
 To replace a monitor:
 
 1. Connect the new display.
-2. Click Sanctuary NDI in the menu bar.
-3. Choose the new display under Mirror Display.
+2. Open Sanctuary NDI Settings → Displays.
+3. Choose the new input or confidence monitor.
 4. The new choice becomes the default immediately.
 
 No source edits, Terminal commands, or rebuild are needed for normal display changes.
 
-## Receiver setup
+## Magewell receiver control
 
-On the Magewell or another NDI receiver, select Sanctuary Projector Screen (shown by receivers with the Mac host name) or the source name configured in Settings. This app deliberately does not configure the receiver.
+Settings → Projector stores the receiver's local address, username, and NDI source-match text. The password is stored only in macOS Keychain. The client supports both the current authenticated JSON API (`/api/user/login`, `/api/source/list`, `/api/source/select`) and legacy Pro Convert firmware (`/mwapi` login, discovery, and `set-channel`). Source matching prefers an exact name and otherwise requires one unambiguous case-insensitive substring match.
+
+For security, receiver credentials are sent only to private/link-local IP addresses, `.local` hosts, or local unqualified hostnames. HTTP is supported because the receiver's local management API uses it. See Magewell's official [current decoder API](https://www.magewell.com/api-docs/pro-convert-ip-decoder-api/latest/) and [legacy decoder API](https://www.magewell.com/api-docs/pro-convert-decoder-api/).
 
 ## Settings and launch at login
 
-Settings opens a normal native window and temporarily shows Sanctuary NDI in the Dock so it behaves like a foreground app while being configured. Closing Settings returns it to menu-bar-only mode. Settings controls the source name, 60/30 fps, cursor visibility, and Launch Sanctuary NDI at login. Source-name and video changes restart the pipeline cleanly. Launch at Login uses Apple SMAppService; macOS may require approval in System Settings → General → Login Items.
+Settings opens a normal native tabbed window. It configures monitor roles, the friendly monitor label, NDI video, Magewell control and credentials, source matching, permissions, diagnostics, and Launch at Login. Launch at Login uses Apple SMAppService; macOS may require approval in System Settings → General → Login Items.
 
-At login, the saved display is found and broadcasting starts automatically. Sleep, wake, display changes, capture interruption, and transient startup errors trigger clean recovery with capped exponential backoff.
+At login, the wizard asks for the day's mode. Sleep, wake, display changes, capture interruption, and transient capture errors use clean recovery with capped exponential backoff.
 
 ## Troubleshooting
 
-- No NDI source: confirm both devices are on the same LAN, verify the selected display, and choose Restart Broadcast.
+- Projector connection failed: confirm the receiver is on the same LAN, verify its address and credentials in Settings → Projector, then run Save Password & Test.
+- Source not found: start ProPresenter or the monitor broadcast, then make the configured source-match text more distinctive.
+- No monitor NDI source: verify the input display in Settings → Displays and use Restart Monitor Broadcast under Support.
 - Screen Permission Required: grant Screen Recording access, then quit and reopen if macOS requests it.
 - Selected Display Missing: reconnect it or choose its replacement from Mirror Display.
 - NDI Error: use Copy Diagnostics and verify libndi.dylib exists in the app Contents/Frameworks folder.
@@ -56,13 +63,16 @@ At login, the saved display is found and broadcasting starts automatically. Slee
 - DisplayManager and DisplayIdentity provide ScreenCaptureKit discovery and persistent physical-display matching.
 - CaptureManager owns a bounded SCStream (queue depth 3) capturing only one SCDisplay.
 - NDISender and NDIBridge use the official NDI SDK sender through a small dynamically loaded C boundary.
+- MagewellClient authenticates, discovers, matches, and selects NDI sources across both Magewell API generations.
+- ConfidenceMirrorController presents captured sample buffers fullscreen on a separately selected monitor.
+- KeychainStore keeps the receiver password out of UserDefaults and the app bundle.
 - Preferences provides typed UserDefaults persistence.
 - LoginItemManager wraps SMAppService.mainApp.
 - SwiftUI supplies MenuBarExtra and Settings UI; AppKit is used for native lifecycle/menu behavior.
 
 ScreenCaptureKit outputs its native packed BGRA format, which the NDI sender accepts directly. Frames are submitted from the locked CVPixelBuffer without an application-side full-frame copy or Swift pixel loop; the NDI runtime performs its optimized internal color conversion and compression. The synchronous send runs on ScreenCaptureKit dedicated bounded output queue, allowing stale frames to drop instead of accumulating latency.
 
-The app uses the hardened runtime and a stable code signature. It is distributed outside the Mac App Store without App Sandbox so the bundled NDI runtime can publish multicast/local-network traffic reliably. It has no audio capture, recording, web server, cloud service, or analytics.
+The app uses the hardened runtime and a stable code signature. It is distributed outside the Mac App Store without App Sandbox so the bundled NDI runtime can publish multicast/local-network traffic and the app can control a local HTTP receiver. It has no audio capture, recording, web server, cloud service, or analytics.
 
 ## Development
 

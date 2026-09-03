@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 app="$repo_dir/build/Release/Sanctuary NDI.app"
-output="$repo_dir/build/Sanctuary-NDI-1.0.2-arm64.dmg"
+output="$repo_dir/build/Sanctuary-NDI-1.1.0-arm64.dmg"
 staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/SanctuaryNDI.XXXXXX")"
 
 cleanup() {

@@ -2,6 +2,36 @@ import XCTest
 @testable import SanctuaryCore
 
 final class SanctuaryCoreTests: XCTestCase {
+    func testMagewellSourceMatchingPrefersExactThenUniqueSubstring() throws {
+        let sources = [
+            MagewellSource(id: 1, name: "SANCTUARY (ProPresenter)", address: "10.0.0.1:5961"),
+            MagewellSource(id: 2, name: "BIGMAC (Sanctuary Projector Screen)", address: "10.0.0.2:5961")
+        ]
+        XCTAssertEqual(try MagewellClient.bestMatch("SANCTUARY (ProPresenter)", in: sources).id, 1)
+        XCTAssertEqual(try MagewellClient.bestMatch("projector screen", in: sources).id, 2)
+    }
+
+    func testMagewellSourceMatchingRejectsAmbiguity() {
+        let sources = [
+            MagewellSource(id: 1, name: "Room A ProPresenter", address: nil),
+            MagewellSource(id: 2, name: "Room B ProPresenter", address: nil)
+        ]
+        XCTAssertThrowsError(try MagewellClient.bestMatch("ProPresenter", in: sources))
+    }
+
+    func testModernMagewellSourceShapesAreParsed() throws {
+        let object: [String: Any] = [
+            "status": 0,
+            "list": [
+                ["id": 7, "config": ["name": "Preset alias", "type": 2, "ndi": ["name": "HOST (ProPresenter)", "url": "10.0.0.1:5961"]]],
+                ["id": 8, "config": ["name": "Input", "type": "d_ndi", "data": ["name": "HOST (Monitor)", "url": "10.0.0.2:5961"]]]
+            ]
+        ]
+        let sources = try MagewellClient.parseModernSources(object)
+        XCTAssertEqual(sources.map(\.name), ["HOST (ProPresenter)", "HOST (Monitor)"])
+        XCTAssertEqual(sources.map(\.address), ["10.0.0.1:5961", "10.0.0.2:5961"])
+    }
+
     private func identity(
         uuid: String? = nil, vendor: UInt32 = 1, model: UInt32 = 2,
         serial: UInt32 = 3, name: String = "Projector", width: Int = 1920, height: Int = 1080
@@ -64,11 +94,17 @@ final class SanctuaryCoreTests: XCTestCase {
         first.frameRate = 30
         first.showsCursor = false
         first.selectedDisplay = identity(uuid: "saved")
+        first.confidenceDisplay = identity(uuid: "confidence")
+        first.inputDisplayLabel = "Left Screen"
+        first.magewellAddress = "10.0.0.10"
 
         let second = Preferences(defaults: defaults)
         XCTAssertEqual(second.sourceName, "Test Sender")
         XCTAssertEqual(second.frameRate, 30)
         XCTAssertFalse(second.showsCursor)
         XCTAssertEqual(second.selectedDisplay, identity(uuid: "saved"))
+        XCTAssertEqual(second.confidenceDisplay, identity(uuid: "confidence"))
+        XCTAssertEqual(second.inputDisplayLabel, "Left Screen")
+        XCTAssertEqual(second.magewellAddress, "10.0.0.10")
     }
 }

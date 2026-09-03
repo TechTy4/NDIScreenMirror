@@ -2,8 +2,10 @@ import CoreGraphics
 import Foundation
 
 enum BroadcastStatus: String, Codable, Sendable {
+    case awaitingSetup = "Setup Required"
     case starting = "Starting"
     case broadcasting = "Broadcasting"
+    case proPresenter = "ProPresenter Active"
     case permissionRequired = "Screen Permission Required"
     case displayMissing = "Selected Display Missing"
     case ndiError = "NDI Error"
@@ -12,7 +14,9 @@ enum BroadcastStatus: String, Codable, Sendable {
 
     var symbolName: String {
         switch self {
+        case .awaitingSetup: "wand.and.stars"
         case .broadcasting: "dot.radiowaves.left.and.right"
+        case .proPresenter: "play.rectangle.on.rectangle"
         case .starting: "hourglass"
         case .sleeping: "moon.zzz"
         case .permissionRequired: "lock.shield"
@@ -20,6 +24,40 @@ enum BroadcastStatus: String, Codable, Sendable {
         case .ndiError, .captureError: "exclamationmark.triangle"
         }
     }
+}
+
+enum ProjectorInputMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case proPresenter
+    case screenMirror
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .proPresenter: "ProPresenter"
+        case .screenMirror: "Left/Projector Monitor"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .proPresenter: "Show the presentation feed produced by ProPresenter."
+        case .screenMirror: "Show everything visible on the selected input monitor."
+        }
+    }
+}
+
+struct MagewellSource: Equatable, Sendable {
+    let id: Int?
+    let name: String
+    let address: String?
+}
+
+enum SettingsTab: Hashable, Sendable {
+    case general
+    case displays
+    case projector
+    case support
 }
 
 struct DisplayIdentity: Codable, Equatable, Hashable, Sendable {

@@ -11,7 +11,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let rootView = SettingsView().environmentObject(appState)
         let hostingController = NSHostingController(rootView: rootView)
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 350),
+            contentRect: NSRect(x: 0, y: 0, width: 650, height: 590),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -31,7 +31,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
         onClose()
     }
 }

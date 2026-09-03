@@ -10,6 +10,7 @@ final class CaptureManager: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private var stream: SCStream?
     private var generation = UUID()
     var onFrame: (@Sendable (CVPixelBuffer, CMTime) -> Void)?
+    var onSampleBuffer: (@Sendable (CMSampleBuffer) -> Void)?
     var onStopped: (@Sendable (Error) -> Void)?
 
     func start(display: SCDisplay, frameRate: Int, showsCursor: Bool) async throws {
@@ -54,5 +55,6 @@ final class CaptureManager: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
               SCFrameStatus(rawValue: statusRaw) == .complete,
               let pixelBuffer = sampleBuffer.imageBuffer else { return }
         onFrame?(pixelBuffer, sampleBuffer.presentationTimeStamp)
+        onSampleBuffer?(sampleBuffer)
     }
 }
