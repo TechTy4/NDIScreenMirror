@@ -40,6 +40,8 @@ struct SettingsView: View {
             Section("Current session") {
                 LabeledContent("Mode", value: appState.activeMode?.title ?? "Waiting for startup wizard")
                 LabeledContent("Status", value: appState.status.rawValue)
+                LabeledContent("Projector screen NDI", value: appState.projectorBroadcast.status.rawValue)
+                LabeledContent("User screen NDI", value: appState.userBroadcast.status.rawValue)
                 LabeledContent("Confidence monitor", value: appState.confidenceMirrorEnabled ? "Mirroring" : "Not mirrored")
                 Button("Run Startup Wizard…") { appState.openStartupWizard() }
             }
@@ -62,6 +64,14 @@ struct SettingsView: View {
                         Text(display.displayName).tag(Optional(display.id))
                     }
                 }
+                Picker("User screen (operator)", selection: userDisplaySelection) {
+                    Text("Choose a connected monitor").tag(Optional<CGDirectDisplayID>.none)
+                    ForEach(appState.displayManager.displays) { display in
+                        Text(display.displayName).tag(Optional(display.id))
+                    }
+                }
+                Text("Both the input monitor and User screen stream continuously, including while ProPresenter is selected or the startup wizard is open. Selections are saved automatically.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if inputDisplaySelection.wrappedValue == confidenceDisplaySelection.wrappedValue,
                    inputDisplaySelection.wrappedValue != nil {
                     Label("The input and confidence monitors must be different.", systemImage: "exclamationmark.triangle.fill")
@@ -70,8 +80,11 @@ struct SettingsView: View {
                 Button("Refresh Connected Monitors") { Task { await appState.displayManager.refresh() } }
             }
 
-            Section("Monitor NDI feed") {
-                TextField("NDI source name", text: $draftSourceName).onSubmit { saveSourceName() }
+            Section("Always-on NDI feeds") {
+                TextField("Projector NDI source name", text: $draftSourceName).onSubmit { saveSourceName() }
+                LabeledContent("User NDI source name", value: appState.preferences.userSourceName)
+                LabeledContent("Projector feed", value: appState.projectorBroadcast.detail)
+                LabeledContent("User feed", value: appState.userBroadcast.detail)
                 Picker("Frame rate", selection: Binding(
                     get: { appState.preferences.frameRate },
                     set: { appState.preferences.frameRate = $0; appState.settingsChanged() }
@@ -125,7 +138,7 @@ struct SettingsView: View {
             Section("Permissions and recovery") {
                 Button("Request Screen Recording Permission") { appState.requestScreenPermission() }
                 Button("Open Screen Recording Settings") { appState.openScreenRecordingSettings() }
-                Button("Restart Monitor Broadcast") { Task { await appState.restartBroadcast() } }
+                Button("Restart Both NDI Broadcasts") { Task { await appState.restartBroadcast() } }
             }
             Section("Diagnostics") {
                 Button("Copy Diagnostics") { appState.copyDiagnostics() }
@@ -150,6 +163,19 @@ struct SettingsView: View {
             set: { id in
                 guard let id, let display = appState.displayManager.displays.first(where: { $0.id == id }) else { return }
                 appState.select(display)
+            }
+        )
+    }
+
+    private var userDisplaySelection: Binding<CGDirectDisplayID?> {
+        Binding(
+            get: {
+                guard let saved = appState.preferences.userDisplay else { return nil }
+                return DisplayIdentity.bestMatch(for: saved, in: appState.displayManager.displays)?.id
+            },
+            set: { id in
+                guard let id, let display = appState.displayManager.displays.first(where: { $0.id == id }) else { return }
+                appState.selectUserDisplay(display)
             }
         )
     }

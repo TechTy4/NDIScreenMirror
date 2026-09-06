@@ -8,6 +8,7 @@ final class Preferences: ObservableObject {
         static let frameRate = "frameRate"
         static let showsCursor = "showsCursor"
         static let selectedDisplay = "selectedDisplay"
+        static let userDisplay = "userDisplay"
         static let confidenceDisplay = "confidenceDisplay"
         static let inputDisplayLabel = "inputDisplayLabel"
         static let launchAtLogin = "launchAtLogin"
@@ -37,6 +38,14 @@ final class Preferences: ObservableObject {
             } else { defaults.removeObject(forKey: Key.confidenceDisplay) }
         }
     }
+    @Published var userDisplay: DisplayIdentity? {
+        didSet {
+            if let userDisplay, let data = try? JSONEncoder().encode(userDisplay) {
+                defaults.set(data, forKey: Key.userDisplay)
+            } else { defaults.removeObject(forKey: Key.userDisplay) }
+        }
+    }
+    let userSourceName = "Sanctuary User Screen"
     @Published var inputDisplayLabel: String { didSet { defaults.set(inputDisplayLabel, forKey: Key.inputDisplayLabel) } }
     @Published var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: Key.launchAtLogin) } }
     @Published var magewellEnabled: Bool { didSet { defaults.set(magewellEnabled, forKey: Key.magewellEnabled) } }
@@ -66,6 +75,9 @@ final class Preferences: ObservableObject {
         if let data = defaults.data(forKey: Key.selectedDisplay) {
             selectedDisplay = try? JSONDecoder().decode(DisplayIdentity.self, from: data)
         } else { selectedDisplay = nil }
+        if let data = defaults.data(forKey: Key.userDisplay) {
+            userDisplay = try? JSONDecoder().decode(DisplayIdentity.self, from: data)
+        } else { userDisplay = nil }
         if let data = defaults.data(forKey: Key.confidenceDisplay) {
             confidenceDisplay = try? JSONDecoder().decode(DisplayIdentity.self, from: data)
         } else { confidenceDisplay = nil }

@@ -35,7 +35,7 @@ struct StartupWizardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(step == 0 ? "What should the projector show?" : "Duplicate it on the confidence monitor?")
                     .font(.title2.bold())
-                Text(step == 0 ? "Choose how you plan to use the room today." : "This is useful when the same material should appear on both sides.")
+                Text(step == 0 ? "Choose the projector source. Both screen feeds keep running for the livestream team." : "This is useful when the same material should appear on both sides.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -151,6 +151,7 @@ struct StartupWizardView: View {
             DisclosureGroup("Technical details", isExpanded: $showTechnicalDetails) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Monitor NDI source: \(appState.preferences.screenMirrorSourceMatch)")
+                    Text("User NDI source: \(appState.preferences.userSourceName) (always running)")
                     Text("ProPresenter source match: \(appState.preferences.proPresenterSourceMatch)")
                     Text("Projector receiver: \(appState.preferences.magewellAddress.isEmpty ? "Not configured" : appState.preferences.magewellAddress)")
                 }

@@ -10,7 +10,7 @@ let package = Package(
             name: "SanctuaryCore",
             path: "NDIScreenMirror",
             exclude: [
-                "AppState.swift", "Assets.xcassets", "CaptureManager.swift", "ConfidenceMirrorController.swift",
+                "AppState.swift", "Assets.xcassets", "CaptureManager.swift", "ConfidenceMirrorController.swift", "MonitorBroadcast.swift",
                 "DisplayManager.swift", "LoginItemManager.swift", "MenuBarView.swift",
                 "Info.plist", "KeychainStore.swift",
                 "NDIBridge.c", "NDIBridge.h", "NDIScreenMirror-Bridging-Header.h",

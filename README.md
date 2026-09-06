@@ -19,17 +19,17 @@ The non-closable (but minimizable) wizard appears on every launch and asks:
 1. Should the projector show ProPresenter or the configured input monitor?
 2. In monitor mode, should the feed also be duplicated fullscreen on the configured confidence monitor?
 
-ProPresenter mode requires ProPresenter to be running. Monitor mode requires Screen Recording permission and starts the High Bandwidth NDI sender before asking the Magewell to switch. Errors remain in the wizard with actionable recovery instead of silently selecting another source.
+Both monitor feeds start automatically as soon as the app launches and their saved displays and Screen Recording permission are available, even while the wizard is open. ProPresenter mode requires ProPresenter to be running and leaves both feeds running. Monitor mode waits for the projector-monitor feed before asking the Magewell to switch. Errors remain in the wizard with actionable recovery instead of silently selecting another source.
 
 ## Display configuration
 
-Settings → Displays assigns the input monitor and confidence monitor. The friendly input label defaults to **Left/Projector Monitor** and can be changed in General. Display choices are saved using the Core Graphics display UUID plus vendor, model, serial, name, and native-resolution fallbacks.
+Settings → Displays assigns the input monitor, confidence monitor, and **User screen (operator)**. The User screen initially selects the Mac's main display, then remembers your chosen physical monitor across launches. Two independent NDI feeds run in every projector mode: **Sanctuary Projector Screen** (the existing configurable input-feed name) and **Sanctuary User Screen**. The livestream computer can view either without changing the projector. Frame rate and mouse-pointer settings apply to both feeds. A disconnected monitor pauses only its own feed; reconnecting it restores that feed. The friendly input label defaults to **Left/Projector Monitor** and can be changed in General. Display choices are saved using the Core Graphics display UUID plus vendor, model, serial, name, and native-resolution fallbacks.
 
 To replace a monitor:
 
 1. Connect the new display.
 2. Open Sanctuary NDI Settings → Displays.
-3. Choose the new input or confidence monitor.
+3. Choose the new input, User, or confidence monitor.
 4. The new choice becomes the default immediately.
 
 No source edits, Terminal commands, or rebuild are needed for normal display changes.
@@ -50,16 +50,17 @@ At login, the wizard asks for the day's mode. Sleep, wake, display changes, capt
 
 - Projector connection failed: confirm the receiver is on the same LAN, verify its address and credentials in Settings → Projector, then run Save Password & Test.
 - Source not found: start ProPresenter or the monitor broadcast, then make the configured source-match text more distinctive.
-- No monitor NDI source: verify the input display in Settings → Displays and use Restart Monitor Broadcast under Support.
+- No monitor NDI source: verify the input display in Settings → Displays and use Restart Both NDI Broadcasts under Support.
 - Screen Permission Required: grant Screen Recording access, then quit and reopen if macOS requests it.
-- Selected Display Missing: reconnect it or choose its replacement from Mirror Display.
+- Selected Display Missing: reconnect it or choose its replacement in Settings → Displays.
 - NDI Error: use Copy Diagnostics and verify libndi.dylib exists in the app Contents/Frameworks folder.
 - Network temporarily unavailable: leave the app running; the sender remains available when the LAN returns.
 - Support snapshot: Copy Diagnostics includes version, OS/architecture, display identity, resolution, frame rate, runtime version, receiver count, permission, and login-item state. Screen content is never logged.
 
 ## Architecture
 
-- AppState coordinates lifecycle, status, preference changes, retries, and sleep/wake.
+- AppState coordinates projector routing, lifecycle, status, preferences, and sleep/wake.
+- Two MonitorBroadcast instances independently own capture, NDI senders, serialized configuration changes, and capped retry backoff. Changing wizard mode never stops either sender.
 - DisplayManager and DisplayIdentity provide ScreenCaptureKit discovery and persistent physical-display matching.
 - CaptureManager owns a bounded SCStream (queue depth 3) capturing only one SCDisplay.
 - NDISender and NDIBridge use the official NDI SDK sender through a small dynamically loaded C boundary.
@@ -91,6 +92,8 @@ Debug build command:
 Logic tests:
 
     swift test
+
+For a live receive check, compile `scripts/verify-ndi-feeds.cpp` using the command at the top of that file. Run it without arguments to list discovered source names, then pass the exact projector and User source names to check video from both. It never saves screen contents. Run it with the wizard open and again after choosing ProPresenter; both feeds should remain available. Test disconnect/reconnect and sleep/wake with the room displays attached.
 
 Release build:
 

@@ -94,6 +94,7 @@ final class SanctuaryCoreTests: XCTestCase {
         first.frameRate = 30
         first.showsCursor = false
         first.selectedDisplay = identity(uuid: "saved")
+        first.userDisplay = identity(uuid: "operator")
         first.confidenceDisplay = identity(uuid: "confidence")
         first.inputDisplayLabel = "Left Screen"
         first.magewellAddress = "10.0.0.10"
@@ -103,6 +104,8 @@ final class SanctuaryCoreTests: XCTestCase {
         XCTAssertEqual(second.frameRate, 30)
         XCTAssertFalse(second.showsCursor)
         XCTAssertEqual(second.selectedDisplay, identity(uuid: "saved"))
+        XCTAssertEqual(second.userDisplay, identity(uuid: "operator"))
+        XCTAssertEqual(second.userSourceName, "Sanctuary User Screen")
         XCTAssertEqual(second.confidenceDisplay, identity(uuid: "confidence"))
         XCTAssertEqual(second.inputDisplayLabel, "Left Screen")
         XCTAssertEqual(second.magewellAddress, "10.0.0.10")

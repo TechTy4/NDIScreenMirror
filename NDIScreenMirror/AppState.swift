@@ -10,7 +10,6 @@ final class AppState: ObservableObject {
     @Published private(set) var detail = "Preparing broadcast…"
     @Published private(set) var selectedDisplay: DisplayDescriptor?
     @Published private(set) var frameSize: CGSize = .zero
-    @Published private(set) var lastFrameAt: Date?
     @Published private(set) var activeMode: ProjectorInputMode?
     @Published private(set) var confidenceMirrorEnabled = false
     @Published private(set) var proPresenterRunning = false
@@ -23,13 +22,12 @@ final class AppState: ObservableObject {
 
     let preferences = Preferences()
     let displayManager = DisplayManager()
-    private let capture = CaptureManager()
-    private let sender = NDISender()
+    let projectorBroadcast = MonitorBroadcast()
+    let userBroadcast = MonitorBroadcast()
+    private var subscriptions = Set<AnyCancellable>()
     private let confidenceMirror = ConfidenceMirrorController()
     private let magewell = MagewellClient()
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "SanctuaryNDI", category: "Application")
-    private var restartTask: Task<Void, Never>?
-    private var backoff = RecoveryBackoff()
     private var isSleeping = false
     private var didLaunch = false
     private var processActivity: NSObjectProtocol?
@@ -37,25 +35,24 @@ final class AppState: ObservableObject {
     private var wizardWindowController: WizardWindowController?
 
     init() {
-        capture.onFrame = { [weak self] buffer, time in
-            guard let self else { return }
-            self.sender.send(pixelBuffer: buffer, presentationTime: time)
-            Task { @MainActor [weak self] in self?.lastFrameAt = Date() }
-        }
-        capture.onSampleBuffer = { [weak self] sampleBuffer in
+        projectorBroadcast.capture.onSampleBuffer = { [weak self] sampleBuffer in
             self?.confidenceMirror.enqueue(sampleBuffer)
         }
-        capture.onStopped = { [weak self] error in
-            Task { @MainActor [weak self] in self?.handleCaptureFailure(error) }
+        for broadcast in [projectorBroadcast, userBroadcast] {
+            broadcast.objectWillChange.sink { [weak self] _ in
+                Task { @MainActor in self?.updateBroadcastStatus() }
+            }.store(in: &subscriptions)
         }
+        preferences.objectWillChange.sink { [weak self] _ in
+            Task { @MainActor in self?.objectWillChange.send() }
+        }.store(in: &subscriptions)
         displayManager.onDisplaysChanged = { [weak self] in
-            Task { @MainActor in
-                guard self?.activeMode == .screenMirror else { return }
-                if self?.confidenceMirrorEnabled == true {
-                    do { try self?.configureConfidenceMirror(enabled: true) }
-                    catch { self?.detail = error.localizedDescription }
-                }
-                await self?.reconcileDisplayAndStart()
+            guard let self else { return }
+            self.configureBroadcasts()
+            self.objectWillChange.send()
+            if self.confidenceMirrorEnabled {
+                do { try self.configureConfidenceMirror(enabled: true) }
+                catch { self.confidenceMirror.hide(); self.detail = error.localizedDescription }
             }
         }
 
@@ -90,10 +87,8 @@ final class AppState: ObservableObject {
         logger.info("Display selected from menu: \(display.displayName, privacy: .public), ID \(display.id)")
         selectedDisplay = display
         preferences.selectedDisplay = display.identity
-        guard activeMode == .screenMirror else { return }
-        status = .starting
-        detail = "Switching to \(display.displayName)…"
-        Task { @MainActor [weak self] in await self?.restartBroadcast() }
+        configureBroadcasts()
+        if confidenceMirrorEnabled { try? configureConfidenceMirror(enabled: true) }
     }
 
     func selectConfidenceDisplay(_ display: DisplayDescriptor?) {
@@ -137,126 +132,61 @@ final class AppState: ObservableObject {
         if hasForegroundWindow { NSApp.activate(ignoringOtherApps: true) }
     }
 
+    func selectUserDisplay(_ display: DisplayDescriptor) {
+        preferences.userDisplay = display.identity
+        configureBroadcasts()
+    }
+
+    private func configureBroadcasts(force: Bool = false) {
+        if preferences.userDisplay == nil, let main = displayManager.displays.first(where: { $0.isMain }) {
+            preferences.userDisplay = main.identity
+        }
+        if preferences.selectedDisplay == nil, displayManager.displays.count == 1 {
+            preferences.selectedDisplay = displayManager.displays[0].identity
+        }
+        selectedDisplay = preferences.selectedDisplay.flatMap { DisplayIdentity.bestMatch(for: $0, in: displayManager.displays) }
+        let userDisplay = preferences.userDisplay.flatMap { DisplayIdentity.bestMatch(for: $0, in: displayManager.displays) }
+        projectorBroadcast.configure(display: selectedDisplay, name: preferences.sourceName,
+                                     frameRate: preferences.frameRate, cursor: preferences.showsCursor, sleeping: isSleeping, force: force)
+        userBroadcast.configure(display: userDisplay, name: preferences.userSourceName,
+                                frameRate: preferences.frameRate, cursor: preferences.showsCursor, sleeping: isSleeping, force: force)
+        frameSize = selectedDisplay.map { CGSize(width: $0.width, height: $0.height) } ?? .zero
+    }
+
+    private func updateBroadcastStatus() {
+        let feeds = [projectorBroadcast, userBroadcast]
+        if isSleeping { status = .sleeping }
+        else if let issue = feeds.first(where: { $0.status != .broadcasting }) { status = issue.status }
+        else { status = .broadcasting }
+        let count = feeds.filter { $0.status == .broadcasting }.count
+        detail = "\(count)/2 screen feeds running · Projector: \(activeMode?.title ?? "Choose in Startup Wizard")"
+        objectWillChange.send()
+    }
+
     func restartBroadcast() async {
-        guard activeMode == .screenMirror else { return }
-        restartTask?.cancel()
-        await capture.stop()
-        sender.stop()
-        backoff.reset()
-        await reconcileDisplayAndStart()
+        configureBroadcasts(force: true)
+        await projectorBroadcast.waitUntilSettled()
+        await userBroadcast.waitUntilSettled()
+        updateBroadcastStatus()
     }
 
     func settingsChanged(recreateSender: Bool = false) {
-        guard activeMode == .screenMirror else { return }
-        Task {
-            if recreateSender { await restartBroadcast() }
-            else { await restartBroadcast() }
-        }
-    }
-
-    private func reconcileDisplayAndStart() async {
-        guard activeMode == .screenMirror else { return }
-        guard !isSleeping else { return }
-        guard CGPreflightScreenCaptureAccess() else {
-            status = .permissionRequired
-            detail = "Allow Screen Recording to mirror a display."
-            return
-        }
-        guard NDISender.runtimeAvailable else {
-            status = .ndiError
-            detail = "The bundled NDI runtime is unavailable."
-            return
-        }
-        guard !displayManager.displays.isEmpty else {
-            status = .captureError
-            detail = "No captureable displays are available."
-            return
-        }
-
-        let match: DisplayDescriptor?
-        if let saved = preferences.selectedDisplay {
-            match = DisplayIdentity.bestMatch(for: saved, in: displayManager.displays)
-            let savedUUID = saved.uuid ?? "none"
-            let resolvedName = match?.displayName ?? "no match"
-            logger.info("Resolving saved display \(saved.name, privacy: .public), UUID \(savedUUID, privacy: .public): \(resolvedName, privacy: .public)")
-        } else if displayManager.displays.count == 1 {
-            match = displayManager.displays[0]
-            preferences.selectedDisplay = match?.identity
-        } else { match = nil }
-
-        guard let match else {
-            selectedDisplay = nil
-            status = .displayMissing
-            detail = preferences.selectedDisplay == nil ? "Choose a display from Mirror Display." : "The selected display is not connected."
-            return
-        }
-        selectedDisplay = match
-        await start(display: match)
-    }
-
-    private func start(display: DisplayDescriptor) async {
-        status = .starting
-        detail = "Starting \(preferences.sourceName)…"
-        do {
-            guard let scDisplay = try await displayManager.screenCaptureDisplay(id: display.id) else {
-                throw BroadcastError.displayDisappeared
-            }
-            sender.frameRate = preferences.frameRate
-            try sender.start(name: preferences.sourceName.trimmingCharacters(in: .whitespacesAndNewlines))
-            try await capture.start(display: scDisplay, frameRate: preferences.frameRate, showsCursor: preferences.showsCursor)
-            frameSize = CGSize(width: display.width, height: display.height)
-            backoff.reset()
-            status = .broadcasting
-            detail = "NDI: \(preferences.sourceName)"
-        } catch {
-            sender.stop()
-            status = error is NDIError ? .ndiError : .captureError
-            detail = "Broadcast stopped. Retrying automatically."
-            logger.error("Broadcast start failed: \(error.localizedDescription, privacy: .public)")
-            scheduleRetry()
-        }
-    }
-
-    private func handleCaptureFailure(_ error: Error) {
-        guard !isSleeping, activeMode == .screenMirror else { return }
-        status = .captureError
-        detail = "Screen capture stopped. Retrying automatically."
-        sender.stop()
-        scheduleRetry()
-    }
-
-    private func scheduleRetry() {
-        restartTask?.cancel()
-        let delay = backoff.nextDelay()
-        logger.info("Retrying broadcast in \(delay) seconds")
-        restartTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
-            await self?.displayManager.refresh()
-        }
+        configureBroadcasts()
     }
 
     private func sleep() async {
         isSleeping = true
-        restartTask?.cancel()
-        status = .sleeping
-        detail = "Paused while the Mac sleeps."
-        await capture.stop()
-        sender.stop()
+        configureBroadcasts()
+        await projectorBroadcast.waitUntilSettled()
+        await userBroadcast.waitUntilSettled()
         confidenceMirror.hide()
+        updateBroadcastStatus()
     }
 
     private func wake() async {
         isSleeping = false
         try? await Task.sleep(for: .seconds(2))
         await displayManager.refresh()
-        if activeMode == .screenMirror, confidenceMirrorEnabled {
-            try? configureConfidenceMirror(enabled: true)
-        }
-        if activeMode == .proPresenter {
-            status = .proPresenter
-            detail = "Projector is using ProPresenter."
-        }
     }
 
     func completeWizard(mode: ProjectorInputMode, mirrorToConfidenceDisplay: Bool) async {
@@ -270,16 +200,13 @@ final class AppState: ObservableObject {
                 refreshProPresenterState()
                 guard proPresenterRunning else { throw StartupWorkflowError.proPresenterNotRunning }
                 wizardMessage = "Connecting the projector to ProPresenter…"
-                activeMode = .proPresenter
                 confidenceMirrorEnabled = false
-                await capture.stop()
-                sender.stop()
                 confidenceMirror.hide()
                 if preferences.magewellEnabled {
                     _ = try await selectReceiverSourceWithRetry(matching: preferences.proPresenterSourceMatch)
                 }
-                status = .proPresenter
-                detail = "Projector: ProPresenter"
+                activeMode = .proPresenter
+                updateBroadcastStatus()
             case .screenMirror:
                 guard CGPreflightScreenCaptureAccess() else {
                     _ = CGRequestScreenCaptureAccess()
@@ -289,18 +216,20 @@ final class AppState: ObservableObject {
                       DisplayIdentity.bestMatch(for: saved, in: displayManager.displays) != nil else {
                     throw StartupWorkflowError.inputDisplayMissing
                 }
-                activeMode = .screenMirror
                 confidenceMirrorEnabled = mirrorToConfidenceDisplay
                 try configureConfidenceMirror(enabled: mirrorToConfidenceDisplay)
                 wizardWindowController?.show()
                 wizardMessage = "Starting the monitor feed…"
-                await restartBroadcast()
-                guard status == .broadcasting else { throw StartupWorkflowError.broadcastFailed(detail) }
+                configureBroadcasts()
+                await projectorBroadcast.waitUntilSettled()
+                guard projectorBroadcast.status == .broadcasting else { throw StartupWorkflowError.broadcastFailed(detail) }
                 if preferences.magewellEnabled {
                     wizardMessage = "Connecting the projector to the monitor feed…"
                     _ = try await selectReceiverSourceWithRetry(matching: preferences.screenMirrorSourceMatch)
                 }
+                activeMode = .screenMirror
             }
+            updateBroadcastStatus()
             wizardMessage = "Ready"
             wizardWindowController?.finish()
             wizardWindowController = nil
@@ -390,6 +319,7 @@ final class AppState: ObservableObject {
 
     func requestScreenPermission() {
         _ = CGRequestScreenCaptureAccess()
+        Task { await displayManager.refresh() }
     }
 
     func openScreenRecordingSettings() {
@@ -419,7 +349,12 @@ final class AppState: ObservableObject {
         Frame rate: \(preferences.frameRate)
         NDI source: \(preferences.sourceName)
         NDI runtime: \(NDISender.runtimeVersion)
-        NDI receivers: \(sender.connections)
+        Projector NDI receivers: \(projectorBroadcast.sender.connections)
+        Projector feed: \(projectorBroadcast.status.rawValue) — \(projectorBroadcast.detail)
+        User display: \(preferences.userDisplay?.name ?? "Not selected")
+        User NDI source: \(preferences.userSourceName)
+        User NDI receivers: \(userBroadcast.sender.connections)
+        User feed: \(userBroadcast.status.rawValue) — \(userBroadcast.detail)
         Operating mode: \(activeMode?.title ?? "Startup wizard")
         Confidence mirror: \(confidenceMirrorEnabled ? "on" : "off")
         Projector control: \(preferences.magewellEnabled ? "enabled" : "disabled")
@@ -435,7 +370,7 @@ final class AppState: ObservableObject {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let credits = NSMutableAttributedString(
-            string: "Mirrors one selected display as a High Bandwidth NDI® source.\n\nNDI® is a registered trademark of Vizrt NDI AB.\n",
+            string: "Streams the projector and operator displays as independent High Bandwidth NDI® sources.\n\nNDI® is a registered trademark of Vizrt NDI AB.\n",
             attributes: [.paragraphStyle: paragraph]
         )
         credits.append(NSAttributedString(
