@@ -11,6 +11,7 @@ final class Preferences: ObservableObject {
         static let userDisplay = "userDisplay"
         static let confidenceDisplay = "confidenceDisplay"
         static let inputDisplayLabel = "inputDisplayLabel"
+        static let screenConfigurationLabel = "screenConfigurationLabel"
         static let launchAtLogin = "launchAtLogin"
         static let magewellEnabled = "magewellEnabled"
         static let magewellAddress = "magewellAddress"
@@ -47,6 +48,11 @@ final class Preferences: ObservableObject {
     }
     let userSourceName = "Sanctuary User Screen"
     @Published var inputDisplayLabel: String { didSet { defaults.set(inputDisplayLabel, forKey: Key.inputDisplayLabel) } }
+    @Published var screenConfigurationLabel: String { didSet { defaults.set(screenConfigurationLabel, forKey: Key.screenConfigurationLabel) } }
+    var screenConfigurationMenuTitle: String {
+        let label = screenConfigurationLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return label.isEmpty ? "Configure Screens" : label
+    }
     @Published var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: Key.launchAtLogin) } }
     @Published var magewellEnabled: Bool { didSet { defaults.set(magewellEnabled, forKey: Key.magewellEnabled) } }
     @Published var magewellAddress: String { didSet { defaults.set(magewellAddress, forKey: Key.magewellAddress) } }
@@ -56,6 +62,7 @@ final class Preferences: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        screenConfigurationLabel = defaults.string(forKey: Key.screenConfigurationLabel) ?? "Configure Screens"
         sourceName = defaults.string(forKey: Key.sourceName) ?? "Sanctuary Projector Screen"
         frameRate = defaults.object(forKey: Key.frameRate) as? Int ?? 60
         showsCursor = defaults.object(forKey: Key.showsCursor) as? Bool ?? true

@@ -28,6 +28,9 @@ struct SettingsView: View {
     private var generalTab: some View {
         Form {
             Section("Room setup") {
+                TextField("Configure Screens menu label", text: preferenceBinding(\.screenConfigurationLabel))
+                Text("Changes the menu item that opens screen setup. Leave blank to use Configure Screens.")
+                    .font(.caption).foregroundStyle(.secondary)
                 TextField("Input monitor label", text: preferenceBinding(\.inputDisplayLabel))
                 Text("This friendly name is shown in the startup wizard. The default is Left/Projector Monitor.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -43,7 +46,7 @@ struct SettingsView: View {
                 LabeledContent("Projector screen NDI", value: appState.projectorBroadcast.status.rawValue)
                 LabeledContent("User screen NDI", value: appState.userBroadcast.status.rawValue)
                 LabeledContent("Confidence monitor", value: appState.confidenceMirrorEnabled ? "Mirroring" : "Not mirrored")
-                Button("Run Startup Wizard…") { appState.openStartupWizard() }
+                Button(appState.preferences.screenConfigurationMenuTitle) { appState.openStartupWizard() }
             }
         }
         .formStyle(.grouped)

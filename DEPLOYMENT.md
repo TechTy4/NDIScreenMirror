@@ -4,7 +4,7 @@ This build is intended for an Apple Silicon sanctuary Mac running macOS 13 or ne
 
 ## Install and trust
 
-1. Open `Sanctuary-NDI-1.2.0-arm64.dmg`.
+1. Open `Sanctuary-NDI-1.2.1-arm64.dmg`.
 2. Drag **Sanctuary NDI** onto the **Applications** shortcut.
 3. In Applications, Control-click **Sanctuary NDI**, choose **Open**, then confirm **Open**. This explicitly trusts the locally signed app.
 4. If macOS still blocks it, open **System Settings → Privacy & Security**, scroll to Security, and choose **Open Anyway** for Sanctuary NDI.

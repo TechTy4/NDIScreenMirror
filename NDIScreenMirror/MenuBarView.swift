@@ -14,7 +14,7 @@ struct MenuBarView: View {
                 .lineLimit(2)
 
             Divider()
-            Button("Startup Wizard…") { appState.openStartupWizard() }
+            Button(appState.preferences.screenConfigurationMenuTitle) { appState.openStartupWizard() }
             Divider()
             Button("Settings…") { appState.openSettings() }
             Button("About") { appState.showAbout() }

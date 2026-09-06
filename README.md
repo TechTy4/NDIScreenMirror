@@ -42,6 +42,8 @@ For security, receiver credentials are sent only to private/link-local IP addres
 
 ## Settings and launch at login
 
+The menu's **Configure Screens** item reopens the startup wizard. Rename it under Settings → General → **Configure Screens menu label**; the label saves automatically. A blank label uses Configure Screens.
+
 Settings opens a normal native tabbed window. It configures monitor roles, the friendly monitor label, NDI video, Magewell control and credentials, source matching, permissions, diagnostics, and Launch at Login. Launch at Login uses Apple SMAppService; macOS may require approval in System Settings → General → Login Items.
 
 At login, the wizard asks for the day's mode. Sleep, wake, display changes, capture interruption, and transient capture errors use clean recovery with capped exponential backoff.
