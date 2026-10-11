@@ -2,6 +2,10 @@
 
 This build is intended for an Apple Silicon sanctuary Mac running macOS 13 or newer. It does not require a paid Apple Developer membership, the NDI SDK, Xcode, or Terminal on that Mac.
 
+Download the [v1.2.2 release](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.2.2). For all configuration options, see the [settings reference](docs/SETTINGS.md); for recovery, see [troubleshooting](docs/TROUBLESHOOTING.md). Before relying on this update during a service, complete the [on-site acceptance checklist](docs/TESTING.md#on-site-acceptance-checklist). A successful local build does not verify the church network or receiver.
+
+These relative links work in the repository. If reading “Install & Trust.md” inside the DMG, use the online [documentation index](https://github.com/TechTy4/NDIScreenMirror/tree/main/docs) for the additional guides.
+
 ## Install and trust
 
 1. Open `Sanctuary-NDI-1.2.2-arm64.dmg`.
@@ -25,6 +29,8 @@ Do not re-sign or modify the installed app. Its stable signature lets macOS reme
 7. Return to the Startup Wizard and choose the room mode.
 
 Both screen feeds need Screen Recording access in every projector mode. Allow it in System Settings and reopen the app if macOS requests a restart. Allow **Local Network** access when prompted.
+
+Save Password & Test verifies authentication and discovery; it does not switch the projector. Completing the wizard performs routing. If you rename the projector NDI source, update **Monitor source contains** too. The app does not import a development .env file, so enter the receiver credentials on this Mac.
 
 ## Daily startup
 
@@ -57,3 +63,5 @@ The default monitor receiver entry is shown as `<MAC-NAME> (Sanctuary Projector 
 ## Updating later
 
 Quit Sanctuary NDI, replace the existing app in Applications with the new build, and reopen it. Builds made with the same signing identity should retain privacy permissions; if macOS requests permission again, approve it once.
+
+Keep the previous known-working installer and note the configured monitor roles/source matches before an update. If needed, quit and replace the app with that installer, then verify settings and routing again; replacing the app does not normally reset per-user preferences or the Keychain password. Avoid upgrading immediately before a service without time to test.

@@ -4,13 +4,19 @@ Sanctuary NDI is a native macOS room-startup utility for a shared sanctuary/scho
 
 NDI® is a registered trademark of Vizrt NDI AB. Learn more at [ndi.video](https://ndi.video).
 
+## Documentation
+
+Start with the [documentation index](docs/README.md) for the [settings reference](docs/SETTINGS.md), [troubleshooting](docs/TROUBLESHOOTING.md), [architecture](docs/ARCHITECTURE.md), and [testing/on-site acceptance](docs/TESTING.md). The repository also preserves the [development conversation and decisions](docs/CONVERSATION.md), [original build brief](docs/ORIGINAL_BRIEF.md), and [release changelog](CHANGELOG.md).
+
+The latest application release is [v1.2.2](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.2.2). Local build and receive checks have passed; the sanctuary three-monitor layout, church-LAN discovery, and physical Magewell switching still need [on-site verification](docs/TESTING.md#on-site-acceptance-checklist).
+
 ## Installation
 
 1. Build the Release app with `./scripts/build-release.sh`, or open the packaged DMG.
 2. Drag Sanctuary NDI.app onto the Applications shortcut.
 3. Open it once from Applications. Its status icon appears in the menu bar and the Startup Wizard opens. A Dock icon is present while the wizard or Settings is open and disappears during normal menu-bar-only operation.
 
-The packaged build is signed with the first available Apple Development certificate so macOS can retain Screen Recording permission across rebuilds. It is intended for this controlled Mac and does not require a paid developer membership. Control-click the installed app and choose Open the first time; see [DEPLOYMENT.md](DEPLOYMENT.md). Public distribution would require a Developer ID Application certificate and notarization.
+The packaged build is signed with the first available Apple Development certificate so macOS can retain Screen Recording permission across rebuilds. It is intended for controlled deployment and does not require a paid developer membership on the sanctuary Mac. Control-click the installed app and choose Open the first time; see [DEPLOYMENT.md](DEPLOYMENT.md). The public GitHub package is not notarized. Gatekeeper-trusted distribution without manual approval would need Developer ID signing and notarization.
 
 ## Startup Wizard
 
@@ -23,7 +29,7 @@ Both monitor feeds start automatically as soon as the app launches and their sav
 
 ## Display configuration
 
-Capture uses an explicit source rectangle in the selected monitor's local coordinates and even video dimensions, as required by the packed video pipeline. Each capture has its own stream and ignores callbacks from a stopped/replaced stream. On macOS 15.2 or newer the content filter is checked to contain exactly that display. See Apple's [sourceRect documentation](https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/sourcerect). Feed status includes the selected monitor and output resolution.
+Capture uses an explicit source rectangle in the selected monitor's local coordinates and even video dimensions, as required by the packed video pipeline. Output uses Core Graphics logical display dimensions, not necessarily the full Retina backing-pixel resolution. Each capture has its own stream and ignores callbacks from a stopped/replaced stream. On macOS 15.2 or newer the content filter is checked to contain exactly that display. See Apple's [sourceRect documentation](https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/sourcerect). Feed status includes the selected monitor and output resolution.
 
 Settings → Displays assigns the input monitor, confidence monitor, and **User screen (operator)**. The User screen initially selects the Mac's main display, then remembers your chosen physical monitor across launches. Two independent NDI feeds run in every projector mode: **Sanctuary Projector Screen** (the existing configurable input-feed name) and **Sanctuary User Screen**. The livestream computer can view either without changing the projector. Frame rate and mouse-pointer settings apply to both feeds. A disconnected monitor pauses only its own feed; reconnecting it restores that feed. The friendly input label defaults to **Left/Projector Monitor** and can be changed in General. Display choices are saved using the Core Graphics display UUID plus vendor, model, serial, name, and native-resolution fallbacks.
 
@@ -40,7 +46,7 @@ No source edits, Terminal commands, or rebuild are needed for normal display cha
 
 Settings → Projector stores the receiver's local address, username, and NDI source-match text. The password is stored only in macOS Keychain. The client supports both the current authenticated JSON API (`/api/user/login`, `/api/source/list`, `/api/source/select`) and legacy Pro Convert firmware (`/mwapi` login, discovery, and `set-channel`). Source matching prefers an exact name and otherwise requires one unambiguous case-insensitive substring match.
 
-For security, receiver credentials are sent only to private/link-local IP addresses, `.local` hosts, or local unqualified hostnames. HTTP is supported because the receiver's local management API uses it. See Magewell's official [current decoder API](https://www.magewell.com/api-docs/pro-convert-ip-decoder-api/latest/) and [legacy decoder API](https://www.magewell.com/api-docs/pro-convert-decoder-api/).
+Receiver address validation permits private/link-local/loopback IP addresses, `.local` hosts, localhost, and local unqualified hostnames. This is not an audited DNS/redirect isolation boundary. HTTP is supported for local receiver management; use a trusted LAN. See the [security notes](docs/ARCHITECTURE.md#security-privacy-and-deployment-boundaries) and Magewell's official [current decoder API](https://www.magewell.com/api-docs/pro-convert-ip-decoder-api/latest/) and [legacy decoder API](https://www.magewell.com/api-docs/pro-convert-decoder-api/).
 
 ## Settings and launch at login
 
@@ -89,7 +95,7 @@ Requirements:
 - Xcode 15 or newer; developed/tested with Xcode 26.6
 - Current NDI SDK for Apple, installed at /Library/NDI SDK for Apple
 
-The project compiles against the official include/Processing.NDI.Lib.h and bundles lib/macOS/libndi.dylib inside the app. The proprietary runtime is intentionally not committed. Set NDI_SDK_DIR and/or NDI_RUNTIME_PATH if your SDK is elsewhere.
+The project compiles against the official include/Processing.NDI.Lib.h and bundles lib/macOS/libndi.dylib inside the app. The proprietary runtime is intentionally not committed. NDI_SDK_DIR and NDI_RUNTIME_PATH configure release-script dependency checks/runtime selection; an alternate SDK location must also update or override the Xcode project's explicit header/runtime build settings. See [build and package notes](docs/TESTING.md#build-and-package).
 
 Debug build command:
 
