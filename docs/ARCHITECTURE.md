@@ -1,6 +1,6 @@
 # Architecture and implementation notes
 
-Current behavior: v1.2.2, reviewed October 11, 2026. This reference describes implementation, not a guarantee of on-site hardware acceptance.
+Current behavior: v1.3.0, reviewed October 11, 2026. This reference describes implementation, not a guarantee of on-site hardware acceptance.
 
 ## Independent feeds and projector routing
 
@@ -29,6 +29,8 @@ Confidence mirroring consumes projector-monitor sample buffers and presents them
 | [Preferences.swift](../NDIScreenMirror/Preferences.swift) / [KeychainStore.swift](../NDIScreenMirror/KeychainStore.swift) | Non-secret settings and receiver password, respectively. |
 | [LoginItemManager.swift](../NDIScreenMirror/LoginItemManager.swift) | SMAppService login registration. |
 | [SettingsView.swift](../NDIScreenMirror/SettingsView.swift) / window controllers / [StartupWizardView.swift](../NDIScreenMirror/StartupWizardView.swift) | Native settings and mandatory, minimizable startup workflow. |
+| [ScreenIdentifier.swift](../NDIScreenMirror/ScreenIdentifier.swift) | Temporary on-screen labels showing each monitor's number, name, and assigned roles. |
+| [RecentLog.swift](../NDIScreenMirror/RecentLog.swift) | Reads this process's unified-log entries for Copy Recent Log. |
 
 See [settings](SETTINGS.md) for defaults and persistence.
 
@@ -63,7 +65,9 @@ A candidate must reach 1,000. Equal top-scoring weak candidates are rejected rat
 
 The input role can initially auto-select the only connected display. The User role initially chooses the main display. After saving, neither role silently falls back to another unrelated physical display.
 
-ScreenCaptureKit supplies shareable displays, NSScreen supplies user-facing names, and Core Graphics display reconfiguration triggers refreshes. Missing displays are also polled during startup/recovery.
+ScreenCaptureKit supplies shareable displays, NSScreen supplies user-facing names, and Core Graphics display reconfiguration triggers refreshes. Reconfiguration events are coalesced (begin events ignored, ~0.6 s debounce) so one physical change causes one enumeration. Missing displays are also polled during startup/recovery.
+
+Displays are numbered (main first, then left-to-right) so identical monitors can be told apart in pickers and Identify Screens. The number is display-only: it is not saved and is excluded from equality, so renumbering never restarts a feed. The confidence window is kept as-is when a refresh leaves its target screen unchanged, avoiding flicker, and is not re-shown while the Mac is asleep.
 
 ## Recovery and readiness
 
@@ -77,6 +81,10 @@ Local feed recovery and wizard receiver retries are different mechanisms:
 - Magewell startup operations use up to 15 attempts by default, with two-second pauses. Retryable cases include source-not-found, selected transient URLError values, HTTP 408/429, and HTTP 5xx. Authentication/configuration errors do not automatically retry.
 - Individual receiver requests have a six-second request timeout and twelve-second resource timeout. Login, source list, selection, and fallback may involve several requests. Overall elapsed time is therefore not simply the pause budget.
 - Stop Checking cancels the wizard operation, not both independent broadcasts.
+- ProPresenter mode opens ProPresenter when it is installed but not running, waits up to 90 seconds for it, and then allows 30 receiver attempts (instead of 15) for its NDI output to appear. The confidence output is hidden only after routing succeeds.
+- Receiver work is serialized: Settings' test/manual-switch actions are disabled while the wizard runs, and the wizard waits for any in-progress Settings receiver action before starting. Reset All Settings cancels both.
+- Renaming the projector feed rewrites the monitor match only when it equals the old name or contains `(old name)`.
+- Only one copy of the app runs. A second copy (different path, same bundle identifier) posts a distributed notification asking the running copy to open Settings, then quits. Reopening the running app from Finder also opens Settings.
 - Sleep stops feed capture/senders and hides confidence output. Wake waits approximately two seconds, refreshes, and resumes.
 
 Recheck Availability refreshes screens and local feeds without choosing a Magewell source. Recheck & Retry repeats the wizard's selected workflow and can change the receiver input. Restart Both NDI Broadcasts forces recreation while preserving preferences.

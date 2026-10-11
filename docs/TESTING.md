@@ -1,6 +1,6 @@
 # Testing, acceptance, and release verification
 
-This guide separates repeatable procedures from historical results. The documentation update on October 11, 2026 does not itself rebuild or retest the application. The recorded application evidence below belongs to the v1.2.2 implementation/release work.
+This guide separates repeatable procedures from historical results. The documentation update on October 11, 2026 does not itself rebuild or retest the application. Each “Recorded evidence” section below names the release it belongs to.
 
 ## Automated checks
 
@@ -11,14 +11,16 @@ swift test
 zsh scripts/test-ndi-runtime-retry.sh
 ```
 
-The Swift package tests core logic without starting live capture or requiring the proprietary runtime. The 15 tests cover:
+The Swift package tests core logic without starting live capture or requiring the proprietary runtime. The 21 tests cover:
 
 - local single-monitor capture geometry, including negative/offset desktop origins;
 - even video dimensions for a scaled monitor;
 - delayed receiver/source availability, non-retryable authentication, exhaustion, and cancellation;
 - Magewell exact/substring matching, ambiguity, and modern source-list shapes;
 - display identity serialization, UUID/serial matching, ambiguous weak matches, and no unrelated fallback;
-- capped/reset recovery backoff and saved preferences, including the User display.
+- capped/reset recovery backoff and saved preferences, including the User display;
+- remembered wizard choice, reset to defaults, projector-source rename validation and receiver-match following;
+- receiver match summaries shown in Settings, and display numbering that never affects feed equality.
 
 The shell regression uses an isolated fake NDI library to check recovery after failed first initialization. It is not evidence of real hardware transmission.
 
@@ -37,7 +39,7 @@ The release script requires a usable signing identity, builds arm64, checks the 
 
 Maintainer notes:
 
-- App version is stored in the Xcode project's build configurations. The DMG filename is currently hard-coded in package-dmg.sh; update both when releasing another version.
+- App version is stored in the Xcode project's build configurations (MARKETING_VERSION / CURRENT_PROJECT_VERSION). package-dmg.sh names the image from the built app's version automatically.
 - NDI_SDK_DIR changes the release script's dependency checks and default runtime path. The Xcode project also has explicit HEADER_SEARCH_PATHS and NDI_RUNTIME_PATH settings. An alternate SDK installation must update/override those build settings too; environment variables alone are not a complete header-path override.
 - Keep the existing signing identity for updates where possible. Do not publish signing-account information in logs or docs.
 - Release assets are versioned snapshots. Later repository documentation changes do not modify the already published DMG.
@@ -50,8 +52,8 @@ codesign --verify --deep --strict "build/Release/Sanctuary NDI.app"
 file "build/Release/Sanctuary NDI.app/Contents/MacOS/Sanctuary NDI"
 file "build/Release/Sanctuary NDI.app/Contents/Frameworks/libndi.dylib"
 otool -L "build/Release/Sanctuary NDI.app/Contents/MacOS/Sanctuary NDI"
-hdiutil verify "build/Sanctuary-NDI-1.2.2-arm64.dmg"
-shasum -a 256 "build/Sanctuary-NDI-1.2.2-arm64.dmg"
+hdiutil verify "build/Sanctuary-NDI-1.3.0-arm64.dmg"
+shasum -a 256 "build/Sanctuary-NDI-1.3.0-arm64.dmg"
 ```
 
 Mount the candidate image read-only for inspection, verify app version and contents, and detach that image after inspection. Do not detach unrelated mounted volumes if a helper briefly keeps the new image busy. The packaging script retries verification.
@@ -76,6 +78,17 @@ With no arguments it lists sources discovered during approximately three seconds
 With arguments, it attempts video reception for each source for up to approximately 25 seconds and reports dimensions; it does not save screen contents. Exit 1 means one or more specified sources did not produce video in that run. Discovery and video transport are separate failure points: no discovered source does not establish a capture failure.
 
 Run with the wizard open, after monitor-mode selection, and after ProPresenter selection. The two local sources should remain available in all three cases. This helper verifies frames/dimensions, not that the visual content is the intended screen; perform the visual isolation check below too.
+
+## Recorded v1.3.0 evidence
+
+| Check | Recorded result |
+| --- | --- |
+| Swift core suite | 21 tests passed. |
+| Isolated NDI initialization regression | Passed. |
+| Debug and Release build | Passed with no Swift warnings; Release signature verified. |
+| Independent code review | Reviewed by a second model (GPT-6.1-Sol); its four findings (receiver-operation serialization, host-qualified rename, reset clearing session state, identical-monitor identification) were fixed, a follow-up review confirmed them, and its remaining rename edge case and documentation corrections were also addressed. |
+| Visual UI check on development Mac | Not completed: macOS's Screen Recording confirmation dialog was left for the owner rather than approved automatically. |
+| Three-monitor layout, Magewell switching, church LAN | Pending; use the on-site checklist below. |
 
 ## Recorded v1.2.2 evidence
 
@@ -106,11 +119,13 @@ A later local repackage can have a different hash. Compare against the release a
 
 ## On-site acceptance checklist
 
-These are unchecked because no church-network validation has been recorded for v1.2.2. Use harmless test content and avoid altering live service routing during testing.
+These are unchecked because no church-network validation has been recorded for v1.2.2 or v1.3.0. Use harmless test content and avoid altering live service routing during testing.
 
 - [ ] Save a known-working installer and note existing monitor roles, source names, and receiver input before updating.
 - [ ] Install/trust the Applications copy; grant Screen Recording and any Local Network prompt.
-- [ ] Confirm Settings opens, each native display picker works, and all three physical roles can be identified.
+- [ ] Confirm Settings opens, each native display picker works, and all three physical roles can be identified. Use Identify Screens and confirm each label appears on the correct physical monitor.
+- [ ] Save Password & Test lists the receiver's sources; Use for ProPresenter / Use for Monitor fill the matches; Switch the projector now changes the physical projector both ways.
+- [ ] Relaunch: the wizard pre-selects the previous choice. With ProPresenter closed, choose ProPresenter → Open ProPresenter & Start opens it and switches the projector once its NDI output appears.
 - [ ] Assign input = left/projector monitor, User = operator monitor, confidence = right/confidence monitor (or the actual intended room layout).
 - [ ] Quit/relaunch: verify physical selections, labels, video preferences, receiver settings, and saved password persist.
 - [ ] Put distinct test labels/content on all three screens. Receive Sanctuary User Screen from the livestream computer and confirm it shows only the operator screen.

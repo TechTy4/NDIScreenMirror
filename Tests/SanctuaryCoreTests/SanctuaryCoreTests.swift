@@ -175,4 +175,110 @@ final class SanctuaryCoreTests: XCTestCase {
         XCTAssertEqual(second.inputDisplayLabel, "Left Screen")
         XCTAssertEqual(second.magewellAddress, "10.0.0.10")
     }
+
+    @MainActor
+    func testWizardChoiceIsRemembered() {
+        let suite = "SanctuaryCoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = Preferences(defaults: defaults)
+        XCTAssertNil(first.lastMode)
+        XCTAssertFalse(first.lastMirrorToConfidence)
+        first.lastMode = .screenMirror
+        first.lastMirrorToConfidence = true
+
+        let second = Preferences(defaults: defaults)
+        XCTAssertEqual(second.lastMode, .screenMirror)
+        XCTAssertTrue(second.lastMirrorToConfidence)
+    }
+
+    @MainActor
+    func testRenamingProjectorSourceUpdatesDefaultReceiverMatch() throws {
+        let suite = "SanctuaryCoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        try preferences.renameProjectorSource(to: "  Left Wall  ")
+        XCTAssertEqual(preferences.sourceName, "Left Wall")
+        XCTAssertEqual(preferences.screenMirrorSourceMatch, "Left Wall")
+
+        // A deliberately customised match is left alone.
+        preferences.screenMirrorSourceMatch = "BIGMAC (Left"
+        try preferences.renameProjectorSource(to: "Left Screen")
+        XCTAssertEqual(preferences.screenMirrorSourceMatch, "BIGMAC (Left")
+
+        // A host-qualified match picked from the receiver's source list follows the rename.
+        preferences.screenMirrorSourceMatch = "BIGMAC (Left Screen)"
+        try preferences.renameProjectorSource(to: "Projector Wall")
+        XCTAssertEqual(preferences.screenMirrorSourceMatch, "BIGMAC (Projector Wall)")
+
+        // The old name inside the hostname must not be touched.
+        try preferences.renameProjectorSource(to: "Screen")
+        preferences.screenMirrorSourceMatch = "SCREEN-MAC (Screen)"
+        try preferences.renameProjectorSource(to: "Wall")
+        XCTAssertEqual(preferences.screenMirrorSourceMatch, "SCREEN-MAC (Wall)")
+    }
+
+    func testDisplayNumberHelpsIdentifyButNeverChangesEquality() {
+        var numbered = DisplayDescriptor(id: 5, identity: identity(name: "Dell"), width: 1920, height: 1080, isMain: false)
+        let plain = numbered
+        numbered.number = 2
+        XCTAssertEqual(numbered, plain)
+        XCTAssertEqual(numbered.displayName, "Screen 2: Dell — 1920×1080")
+        XCTAssertEqual(plain.displayName, "Dell — 1920×1080")
+    }
+
+    @MainActor
+    func testProjectorSourceNameValidation() {
+        let suite = "SanctuaryCoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertThrowsError(try preferences.renameProjectorSource(to: "   ")) {
+            XCTAssertEqual($0 as? SourceNameError, .empty)
+        }
+        XCTAssertThrowsError(try preferences.renameProjectorSource(to: "sanctuary user screen")) {
+            XCTAssertEqual($0 as? SourceNameError, .collidesWithUserFeed)
+        }
+        XCTAssertEqual(preferences.sourceName, "Sanctuary Projector Screen")
+    }
+
+    @MainActor
+    func testResetRestoresDefaultsAndPersists() {
+        let suite = "SanctuaryCoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.sourceName = "Custom"
+        preferences.frameRate = 30
+        preferences.selectedDisplay = identity(uuid: "saved")
+        preferences.magewellAddress = "10.0.0.10"
+        preferences.magewellEnabled = false
+        preferences.lastMode = .proPresenter
+        preferences.screenConfigurationLabel = "Room"
+
+        preferences.resetToDefaults()
+        for current in [preferences, Preferences(defaults: defaults)] {
+            XCTAssertEqual(current.sourceName, "Sanctuary Projector Screen")
+            XCTAssertEqual(current.frameRate, 60)
+            XCTAssertNil(current.selectedDisplay)
+            XCTAssertEqual(current.magewellAddress, "")
+            XCTAssertTrue(current.magewellEnabled)
+            XCTAssertNil(current.lastMode)
+            XCTAssertEqual(current.screenConfigurationMenuTitle, "Configure Screens")
+            XCTAssertEqual(current.screenMirrorSourceMatch, "Sanctuary Projector Screen")
+        }
+    }
+
+    func testMagewellMatchSummaryExplainsResult() {
+        let sources = [
+            MagewellSource(id: 1, name: "HOST (ProPresenter)", address: nil),
+            MagewellSource(id: 2, name: "HOST (Sanctuary Projector Screen)", address: nil),
+            MagewellSource(id: 3, name: "HOST (Sanctuary User Screen)", address: nil)
+        ]
+        XCTAssertEqual(MagewellClient.matchSummary("propresenter", in: sources), "Matches “HOST (ProPresenter)”")
+        XCTAssertEqual(MagewellClient.matchSummary("Sanctuary", in: sources), "2 sources match — use more specific text")
+        XCTAssertEqual(MagewellClient.matchSummary("Camera", in: sources), "No discovered source matches")
+        XCTAssertEqual(MagewellClient.matchSummary(" ", in: sources), "No match text entered")
+    }
 }

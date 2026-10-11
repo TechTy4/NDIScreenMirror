@@ -12,6 +12,10 @@ enum LoginItemManager {
         }
     }
 
+    static var needsApproval: Bool { SMAppService.mainApp.status == .requiresApproval }
+
+    static func openSystemSettings() { SMAppService.openSystemSettingsLoginItems() }
+
     static var statusDescription: String {
         switch SMAppService.mainApp.status {
         case .enabled: "Enabled"

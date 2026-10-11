@@ -1,6 +1,6 @@
 # Documentation
 
-This is the documentation index for Sanctuary NDI. The current application release is [v1.2.2](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.2.2). Documentation was reviewed against that version on October 11, 2026.
+This is the documentation index for Sanctuary NDI. The current application release is [v1.3.0](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.3.0). Documentation was reviewed against that version on October 11, 2026.
 
 ## For operators and installers
 

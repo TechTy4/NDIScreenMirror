@@ -5,9 +5,10 @@ import OSLog
 import ScreenCaptureKit
 
 nonisolated private func displayReconfigurationCallback(_ display: CGDirectDisplayID, _ flags: CGDisplayChangeSummaryFlags, _ context: UnsafeMutableRawPointer?) {
-    guard let context else { return }
+    // macOS reports a begin and an end event for every display involved in one change.
+    guard let context, !flags.contains(.beginConfigurationFlag) else { return }
     let manager = Unmanaged<DisplayManager>.fromOpaque(context).takeUnretainedValue()
-    Task { @MainActor in await manager.refresh() }
+    Task { @MainActor in manager.scheduleRefresh() }
 }
 
 @MainActor
@@ -15,12 +16,24 @@ final class DisplayManager: ObservableObject {
     @Published private(set) var displays: [DisplayDescriptor] = []
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "SanctuaryNDI", category: "Display")
     var onDisplaysChanged: (() -> Void)?
+    private var pendingRefresh: Task<Void, Never>?
 
     init() {
         CGDisplayRegisterReconfigurationCallback(displayReconfigurationCallback, Unmanaged.passUnretained(self).toOpaque())
     }
 
     deinit { CGDisplayRemoveReconfigurationCallback(displayReconfigurationCallback, Unmanaged.passUnretained(self).toOpaque()) }
+
+    /// Coalesces bursts of reconfiguration events (plugging in, rearranging, waking)
+    /// into one enumeration so feeds and the confidence window restart only once.
+    func scheduleRefresh() {
+        pendingRefresh?.cancel()
+        pendingRefresh = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            await self?.refresh()
+        }
+    }
 
     func refresh() async {
         do {
@@ -43,7 +56,14 @@ final class DisplayManager: ObservableObject {
                 return DisplayDescriptor(id: display.displayID, identity: identity,
                                          width: display.width, height: display.height,
                                          isMain: CGDisplayIsMain(display.displayID) != 0)
-            }.sorted { ($0.isMain ? 0 : 1, $0.displayName) < ($1.isMain ? 0 : 1, $1.displayName) }
+            }
+            // Main first, then left-to-right as arranged, so numbers follow the physical layout.
+            .sorted { ($0.isMain ? 0 : 1, CGDisplayBounds($0.id).minX, $0.id) < ($1.isMain ? 0 : 1, CGDisplayBounds($1.id).minX, $1.id) }
+            .enumerated().map { index, display in
+                var display = display
+                display.number = index + 1
+                return display
+            }
             logger.info("Enumerated \(self.displays.count) displays")
             onDisplaysChanged?()
         } catch {

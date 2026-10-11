@@ -2,13 +2,13 @@
 
 This build is intended for an Apple Silicon sanctuary Mac running macOS 13 or newer. It does not require a paid Apple Developer membership, the NDI SDK, Xcode, or Terminal on that Mac.
 
-Download the [v1.2.2 release](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.2.2). For all configuration options, see the [settings reference](docs/SETTINGS.md); for recovery, see [troubleshooting](docs/TROUBLESHOOTING.md). Before relying on this update during a service, complete the [on-site acceptance checklist](docs/TESTING.md#on-site-acceptance-checklist). A successful local build does not verify the church network or receiver.
+Download the [v1.3.0 release](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.3.0). For all configuration options, see the [settings reference](docs/SETTINGS.md); for recovery, see [troubleshooting](docs/TROUBLESHOOTING.md). Before relying on this update during a service, complete the [on-site acceptance checklist](docs/TESTING.md#on-site-acceptance-checklist). A successful local build does not verify the church network or receiver.
 
 These relative links work in the repository. If reading “Install & Trust.md” inside the DMG, use the online [documentation index](https://github.com/TechTy4/NDIScreenMirror/tree/main/docs) for the additional guides.
 
 ## Install and trust
 
-1. Open `Sanctuary-NDI-1.2.2-arm64.dmg`.
+1. Open `Sanctuary-NDI-1.3.0-arm64.dmg`.
 2. Drag **Sanctuary NDI** onto the **Applications** shortcut.
 3. In Applications, Control-click **Sanctuary NDI**, choose **Open**, then confirm **Open**. This explicitly trusts the locally signed app.
 4. If macOS still blocks it, open **System Settings → Privacy & Security**, scroll to Security, and choose **Open Anyway** for Sanctuary NDI.
@@ -19,22 +19,23 @@ Do not re-sign or modify the installed app. Its stable signature lets macOS reme
 
 1. Open Sanctuary NDI from Applications. Its icon appears in the menu bar.
 2. The Startup Wizard opens automatically and cannot be closed until a room mode is successfully started. It can be minimized.
-3. Click **Settings…** in the wizard and configure the **Displays** tab:
+3. Click **Settings…** in the wizard and configure the **Displays** tab. Click **Identify Screens** first: each monitor briefly shows its number, name, and role so you can tell them apart.
    - Input monitor: the left/projector-output monitor to publish as NDI.
    - User screen (operator): the main/operator monitor, published as **Sanctuary User Screen** for the livestream computer. The first launch defaults to the Mac's main display; your selection is saved.
    - Confidence monitor: the right monitor that may show a fullscreen duplicate.
 4. Configure the **Projector** tab with the Magewell receiver's local IP address, username, password, and distinctive portions of the two NDI source names. The password is saved in macOS Keychain, not the app bundle.
-5. On the church network, click **Save Password & Test**. Resolve any connection or source-name message before relying on automatic switching.
+5. On the church network, click **Save Password & Test**. The receiver's visible NDI sources appear underneath; click **Use for ProPresenter** and **Use for Monitor** on the right ones. Each match setting then confirms what it matches. Optionally use **Switch the projector now** to check that each source really appears on the projector.
 6. Leave **Launch Sanctuary NDI at login** enabled in General.
 7. Return to the Startup Wizard and choose the room mode.
 
 Both screen feeds need Screen Recording access in every projector mode. Allow it in System Settings and reopen the app if macOS requests a restart. Allow **Local Network** access when prompted.
 
-Save Password & Test verifies authentication and discovery; it does not switch the projector. Completing the wizard performs routing. If you rename the projector NDI source, update **Monitor source contains** too. The app does not import a development .env file, so enter the receiver credentials on this Mac.
+Save Password & Test verifies authentication and discovery; it does not switch the projector. Completing the wizard performs routing. Renaming the projector NDI source automatically updates **Monitor source contains** when it contained the old name. The app does not import a development .env file, so enter the receiver credentials on this Mac.
 
 ## Daily startup
 
-- **ProPresenter** selects the configured ProPresenter NDI source on the Magewell. ProPresenter must be open first; the wizard offers an Open ProPresenter button when needed.
+- The wizard pre-selects the last choice, so on an ordinary day just click **Start** (monitor mode: **Next**, then **Start**).
+- **ProPresenter** selects the configured ProPresenter NDI source on the Magewell. If ProPresenter is not open yet, the button reads **Open ProPresenter & Start**: it opens ProPresenter, waits for its NDI output, then switches the projector.
 - **Left/Projector Monitor** waits for the continuously running monitor feed to be available, then selects it on the Magewell.
 - Monitor mode optionally duplicates the feed fullscreen on the configured confidence monitor.
 
@@ -64,4 +65,4 @@ The default monitor receiver entry is shown as `<MAC-NAME> (Sanctuary Projector 
 
 Quit Sanctuary NDI, replace the existing app in Applications with the new build, and reopen it. Builds made with the same signing identity should retain privacy permissions; if macOS requests permission again, approve it once.
 
-Keep the previous known-working installer and note the configured monitor roles/source matches before an update. If needed, quit and replace the app with that installer, then verify settings and routing again; replacing the app does not normally reset per-user preferences or the Keychain password. Avoid upgrading immediately before a service without time to test.
+Keep the previous known-working installer and note the configured monitor roles/source matches before an update. Opening a second copy of the app (for example, the one still inside the DMG) just brings up Settings in the copy that is already running, so duplicate NDI sources are not created. If needed, quit and replace the app with that installer, then verify settings and routing again; replacing the app does not normally reset per-user preferences or the Keychain password. Avoid upgrading immediately before a service without time to test.

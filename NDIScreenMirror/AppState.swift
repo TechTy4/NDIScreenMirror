@@ -13,11 +13,14 @@ final class AppState: ObservableObject {
     @Published private(set) var activeMode: ProjectorInputMode?
     @Published private(set) var confidenceMirrorEnabled = false
     @Published private(set) var proPresenterRunning = false
+    @Published private(set) var screenPermissionGranted = CGPreflightScreenCaptureAccess()
     @Published var wizardIsWorking = false
     @Published var wizardMessage = ""
     @Published var wizardError: String?
     @Published private(set) var availabilityIsRechecking = false
     @Published var receiverTestMessage = "Not tested"
+    @Published private(set) var receiverIsBusy = false
+    @Published private(set) var discoveredSources: [MagewellSource] = []
     @Published var magewellPassword = KeychainStore.password()
     @Published var settingsTab: SettingsTab = .general
 
@@ -28,6 +31,8 @@ final class AppState: ObservableObject {
     private var subscriptions = Set<AnyCancellable>()
     private let confidenceMirror = ConfidenceMirrorController()
     private let magewell = MagewellClient()
+    private let screenIdentifier = ScreenIdentifier()
+    private static let reopenNotification = Notification.Name("org.sanctuary.SanctuaryNDI.reopen")
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "SanctuaryNDI", category: "Application")
     private var isSleeping = false
     private var didLaunch = false
@@ -36,6 +41,9 @@ final class AppState: ObservableObject {
     private var wizardWindowController: WizardWindowController?
     private var availabilityTask: Task<Void, Never>?
     private var wizardTask: Task<Void, Never>?
+    /// Settings-initiated receiver work (test or manual switch). The wizard waits for it,
+    /// and Settings actions are disabled while the wizard runs, so selections never interleave.
+    private var receiverTask: Task<Void, Never>?
 
     init() {
         projectorBroadcast.capture.onSampleBuffer = { [weak self] sampleBuffer in
@@ -53,7 +61,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             self.configureBroadcasts()
             self.objectWillChange.send()
-            if self.confidenceMirrorEnabled {
+            if self.confidenceMirrorEnabled, !self.isSleeping {
                 do { try self.configureConfidenceMirror(enabled: true) }
                 catch { self.confidenceMirror.hide(); self.detail = error.localizedDescription }
             }
@@ -65,11 +73,28 @@ final class AppState: ObservableObject {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.wake() }
         }
+        DistributedNotificationCenter.default().addObserver(forName: Self.reopenNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.openSettings() }
+        }
+    }
+
+    /// A second copy (for example, one still inside the DMG) would publish duplicate
+    /// NDI names and fight over the receiver. Hand off to the running copy instead.
+    private func handOffToRunningInstance() -> Bool {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return false }
+        let current = ProcessInfo.processInfo.processIdentifier
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            .contains(where: { $0.processIdentifier != current && !$0.isTerminated }) else { return false }
+        logger.notice("Another Sanctuary NDI is already running; asking it to open Settings and quitting")
+        DistributedNotificationCenter.default().postNotificationName(Self.reopenNotification, object: nil, deliverImmediately: true)
+        NSApp.terminate(nil)
+        return true
     }
 
     func launch() async {
         guard !didLaunch else { return }
         didLaunch = true
+        guard !handOffToRunningInstance() else { return }
         ProcessInfo.processInfo.disableAutomaticTermination("Sanctuary NDI continuously mirrors the selected display")
         ProcessInfo.processInfo.disableSuddenTermination()
         processActivity = ProcessInfo.processInfo.beginActivity(
@@ -87,7 +112,8 @@ final class AppState: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled, let self else { return }
-                guard !self.isSleeping, CGPreflightScreenCaptureAccess() else { continue }
+                self.refreshScreenPermission()
+                guard !self.isSleeping, self.screenPermissionGranted else { continue }
                 if self.displayManager.displays.isEmpty ||
                     [self.projectorBroadcast, self.userBroadcast].contains(where: { $0.status == .displayMissing || $0.status == .permissionRequired }) {
                     await self.displayManager.refresh()
@@ -233,23 +259,30 @@ final class AppState: ObservableObject {
         wizardError = nil
         defer { wizardIsWorking = false }
         do {
+            if receiverIsBusy {
+                wizardMessage = "Waiting for the receiver test to finish…"
+                await receiverTask?.value
+            }
             wizardMessage = "Checking available screens and feeds…"
             await displayManager.refresh()
             try Task.checkCancellation()
             switch mode {
             case .proPresenter:
-                refreshProPresenterState()
-                guard proPresenterRunning else { throw StartupWorkflowError.proPresenterNotRunning }
-                wizardMessage = "Connecting the projector to ProPresenter…"
+                let justOpened = try await ensureProPresenterRunning()
+                if preferences.magewellEnabled {
+                    wizardMessage = "Connecting the projector to ProPresenter…"
+                    // A freshly opened ProPresenter needs extra time before its NDI output is discoverable.
+                    _ = try await selectReceiverSourceWithRetry(matching: preferences.proPresenterSourceMatch,
+                                                                attempts: justOpened ? 30 : 15)
+                }
+                try Task.checkCancellation()
+                // Only drop the duplicate once the projector has actually been switched away from it.
                 confidenceMirrorEnabled = false
                 confidenceMirror.hide()
-                if preferences.magewellEnabled {
-                    _ = try await selectReceiverSourceWithRetry(matching: preferences.proPresenterSourceMatch)
-                }
                 activeMode = .proPresenter
-                updateBroadcastStatus()
             case .screenMirror:
-                guard CGPreflightScreenCaptureAccess() else {
+                refreshScreenPermission()
+                guard screenPermissionGranted else {
                     _ = CGRequestScreenCaptureAccess()
                     throw StartupWorkflowError.screenPermissionRequired
                 }
@@ -278,8 +311,12 @@ final class AppState: ObservableObject {
                     wizardMessage = "Connecting the projector to the monitor feed…"
                     _ = try await selectReceiverSourceWithRetry(matching: preferences.screenMirrorSourceMatch)
                 }
+                try Task.checkCancellation()
                 activeMode = .screenMirror
             }
+            preferences.lastMode = mode
+            if mode == .screenMirror { preferences.lastMirrorToConfidence = mirrorToConfidenceDisplay }
+            logger.info("Startup wizard completed: \(mode.rawValue, privacy: .public), confidence \(self.confidenceMirrorEnabled)")
             updateBroadcastStatus()
             wizardMessage = "Ready"
             wizardWindowController?.finish()
@@ -288,8 +325,24 @@ final class AppState: ObservableObject {
         } catch is CancellationError {
             wizardError = "Connection check stopped. Choose Recheck & Retry when you are ready."
         } catch {
+            logger.error("Startup wizard failed: \(error.localizedDescription, privacy: .public)")
             wizardError = error.localizedDescription
         }
+    }
+
+    /// Returns true when ProPresenter had to be opened during this call.
+    private func ensureProPresenterRunning() async throws -> Bool {
+        refreshProPresenterState()
+        guard !proPresenterRunning else { return false }
+        wizardMessage = "Opening ProPresenter…"
+        guard launchProPresenter() else { throw StartupWorkflowError.proPresenterNotInstalled }
+        for second in 1...90 {
+            try await Task.sleep(for: .seconds(1))
+            refreshProPresenterState()
+            if proPresenterRunning { return true }
+            wizardMessage = "Opening ProPresenter… (\(second)s)"
+        }
+        throw StartupWorkflowError.proPresenterNotRunning
     }
 
     private func configureConfidenceMirror(enabled: Bool) throws {
@@ -305,8 +358,8 @@ final class AppState: ObservableObject {
         try confidenceMirror.show(on: confidence)
     }
 
-    private func selectReceiverSourceWithRetry(matching name: String) async throws -> MagewellSource {
-        try await AvailabilityRetry.run(operation: {
+    private func selectReceiverSourceWithRetry(matching name: String, attempts: Int = 15) async throws -> MagewellSource {
+        try await AvailabilityRetry.run(attempts: attempts, operation: {
             try await self.magewell.selectSource(
                     matching: name,
                     address: self.preferences.magewellAddress,
@@ -314,23 +367,82 @@ final class AppState: ObservableObject {
                     password: self.magewellPassword
                 )
         }, shouldRetry: AvailabilityRetry.receiverMayBecomeAvailable, onRetry: { attempt in
-            self.wizardMessage = "Waiting for the projector receiver or NDI source… Rechecking (\(attempt)/15)."
+            self.wizardMessage = "Waiting for the projector receiver or NDI source… Rechecking (\(attempt)/\(attempts))."
         })
     }
 
+    var receiverActionsAvailable: Bool { !receiverIsBusy && !wizardIsWorking }
+
     func testMagewellConnection() {
+        guard receiverActionsAvailable else { return }
+        receiverIsBusy = true
         receiverTestMessage = "Testing…"
-        Task {
+        receiverTask = Task {
+            defer { receiverIsBusy = false }
             do {
                 let sources = try await magewell.sources(
                     address: preferences.magewellAddress,
                     username: preferences.magewellUsername,
                     password: magewellPassword
                 )
-                receiverTestMessage = "Connected — \(sources.count) NDI source\(sources.count == 1 ? "" : "s") found"
+                guard !Task.isCancelled else { return }
+                discoveredSources = sources.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                receiverTestMessage = "Connected — \(sources.count) NDI source\(sources.count == 1 ? "" : "s") found."
+            } catch {
+                discoveredSources = []
+                receiverTestMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Routes the receiver immediately, without the wizard. Intended for troubleshooting.
+    func switchProjector(to mode: ProjectorInputMode) {
+        guard receiverActionsAvailable else { return }
+        receiverIsBusy = true
+        receiverTestMessage = "Switching the projector to \(title(for: mode))…"
+        receiverTask = Task {
+            defer { receiverIsBusy = false }
+            do {
+                let match = mode == .proPresenter ? preferences.proPresenterSourceMatch : preferences.screenMirrorSourceMatch
+                let source = try await magewell.selectSource(
+                    matching: match,
+                    address: preferences.magewellAddress,
+                    username: preferences.magewellUsername,
+                    password: magewellPassword
+                )
+                try Task.checkCancellation()
+                if mode == .proPresenter {
+                    confidenceMirrorEnabled = false
+                    confidenceMirror.hide()
+                }
+                activeMode = mode
+                updateBroadcastStatus()
+                logger.info("Projector manually switched to \(source.name, privacy: .public)")
+                receiverTestMessage = "Projector switched to “\(source.name)”."
             } catch {
                 receiverTestMessage = error.localizedDescription
             }
+        }
+    }
+
+    func matchSummary(for mode: ProjectorInputMode) -> String? {
+        guard !discoveredSources.isEmpty else { return nil }
+        let match = mode == .proPresenter ? preferences.proPresenterSourceMatch : preferences.screenMirrorSourceMatch
+        return MagewellClient.matchSummary(match, in: discoveredSources)
+    }
+
+    func title(for mode: ProjectorInputMode) -> String {
+        mode == .screenMirror ? preferences.inputDisplayTitle : mode.title
+    }
+
+    /// Returns a message for the user when the name cannot be used.
+    func renameProjectorSource(_ name: String) -> String? {
+        do {
+            try preferences.renameProjectorSource(to: name)
+            configureBroadcasts()
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 
@@ -340,39 +452,137 @@ final class AppState: ObservableObject {
         catch { receiverTestMessage = "Could not save password: \(error.localizedDescription)" }
     }
 
-    func refreshProPresenterState() {
-        proPresenterRunning = NSWorkspace.shared.runningApplications.contains {
-            $0.bundleIdentifier?.localizedCaseInsensitiveContains("renewedvision.ProPresenter") == true ||
-            $0.localizedName?.localizedCaseInsensitiveContains("ProPresenter") == true
-        }
+    /// Polled while the wizard is visible; publishes only real changes to avoid redrawing every second.
+    func refreshEnvironmentState() {
+        refreshProPresenterState()
+        refreshScreenPermission()
     }
 
-    func openProPresenter() {
+    func refreshProPresenterState() {
+        let running = NSWorkspace.shared.runningApplications.contains {
+            !$0.isTerminated && (
+                $0.bundleIdentifier?.localizedCaseInsensitiveContains("renewedvision.ProPresenter") == true ||
+                $0.localizedName?.localizedCaseInsensitiveContains("ProPresenter") == true
+            )
+        }
+        if running != proPresenterRunning { proPresenterRunning = running }
+    }
+
+    private func refreshScreenPermission() {
+        let granted = CGPreflightScreenCaptureAccess()
+        if granted != screenPermissionGranted { screenPermissionGranted = granted }
+    }
+
+    var proPresenterInstalled: Bool { proPresenterURL != nil }
+
+    private var proPresenterURL: URL? {
         let bundleIdentifiers = [
             "com.renewedvision.ProPresenter",
             "com.renewedvision.ProPresenter7",
             "com.renewedvision.ProPresenter6"
         ]
-        let url = bundleIdentifiers.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
-            ?? (FileManager.default.fileExists(atPath: "/Applications/ProPresenter.app") ? URL(fileURLWithPath: "/Applications/ProPresenter.app") : nil)
-        if let url {
-            let configuration = NSWorkspace.OpenConfiguration()
-            NSWorkspace.shared.openApplication(at: url, configuration: configuration)
-        } else {
-            wizardError = "ProPresenter is not installed in the Applications folder."
-        }
+        let paths = ["/Applications/ProPresenter.app", "/Applications/ProPresenter 7.app"]
+        return bundleIdentifiers.lazy.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
+            ?? paths.first(where: FileManager.default.fileExists(atPath:)).map { URL(fileURLWithPath: $0) }
+    }
+
+    @discardableResult
+    private func launchProPresenter() -> Bool {
+        guard let url = proPresenterURL else { return false }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        return true
+    }
+
+    func openProPresenter() {
+        if !launchProPresenter() { wizardError = StartupWorkflowError.proPresenterNotInstalled.localizedDescription }
         refreshProPresenterState()
     }
 
     func requestScreenPermission() {
         _ = CGRequestScreenCaptureAccess()
+        refreshScreenPermission()
         Task { await displayManager.refresh() }
+    }
+
+    /// Labels every physical screen with its role so the right monitors can be chosen.
+    func identifyScreens() {
+        Task {
+            await displayManager.refresh()
+            screenIdentifier.show(displays: displayManager.displays) { [weak self] display in
+                self?.roles(for: display) ?? []
+            }
+        }
+    }
+
+    func resolvedDisplay(_ identity: DisplayIdentity?) -> DisplayDescriptor? {
+        identity.flatMap { DisplayIdentity.bestMatch(for: $0, in: displayManager.displays) }
+    }
+
+    func roles(for display: DisplayDescriptor) -> [String] {
+        var roles: [String] = []
+        let displays = displayManager.displays
+        func matches(_ identity: DisplayIdentity?) -> Bool {
+            identity.flatMap { DisplayIdentity.bestMatch(for: $0, in: displays) }?.id == display.id
+        }
+        if matches(preferences.selectedDisplay) { roles.append("\(preferences.inputDisplayTitle) (projector feed)") }
+        if matches(preferences.userDisplay) { roles.append("User screen") }
+        if matches(preferences.confidenceDisplay) { roles.append("Confidence monitor") }
+        return roles
+    }
+
+    var confidenceStatus: String {
+        guard confidenceMirrorEnabled else { return "Off" }
+        guard let id = confidenceMirror.displayID,
+              let display = displayManager.displays.first(where: { $0.id == id }) else {
+            return "On, but the confidence monitor is not connected"
+        }
+        return "Mirroring to \(display.displayName)"
+    }
+
+    var projectorSummary: String {
+        guard let activeMode else { return "Projector: not chosen yet" }
+        return "Projector shows: \(title(for: activeMode))"
     }
 
     func openScreenRecordingSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    func openLoginItemsSettings() { LoginItemManager.openSystemSettings() }
+
+    /// Starts a fresh copy once this one has fully exited, e.g. after granting Screen Recording.
+    func relaunch() {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "while /bin/kill -0 \(pid) 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$0\"",
+                             Bundle.main.bundlePath]
+        do {
+            try process.run()
+            logger.notice("Relaunching Sanctuary NDI")
+            NSApp.terminate(nil)
+        } catch {
+            detail = "Could not relaunch: \(error.localizedDescription)"
+        }
+    }
+
+    func resetAllSettings() {
+        logger.notice("Resetting all settings to defaults")
+        wizardTask?.cancel()
+        receiverTask?.cancel()
+        activeMode = nil
+        preferences.resetToDefaults()
+        saveMagewellPassword("")
+        discoveredSources = []
+        receiverTestMessage = "Not tested"
+        confidenceMirrorEnabled = false
+        confidenceMirror.hide()
+        setLaunchAtLogin(preferences.launchAtLogin)
+        configureBroadcasts(force: true)
+        updateBroadcastStatus()
+        openStartupWizard()
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -384,9 +594,17 @@ final class AppState: ObservableObject {
     func copyDiagnostics() {
         let display = selectedDisplay?.displayName ?? preferences.selectedDisplay?.name ?? "None"
         let identity = selectedDisplay?.identity.uuid ?? preferences.selectedDisplay?.uuid ?? "None"
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = info?["CFBundleVersion"] as? String ?? "Unknown"
+        let displays = displayManager.displays.map { display in
+            let roles = roles(for: display)
+            return "  - \(display.displayName) [ID \(display.id)\(display.isMain ? ", main" : "")]: \(roles.isEmpty ? "no role" : roles.joined(separator: ", "))"
+        }.joined(separator: "\n")
+        let sources = discoveredSources.isEmpty ? "  (run Save Password & Test to list)" : discoveredSources.map { "  - \($0.name)" }.joined(separator: "\n")
         let text = """
-        Sanctuary NDI \(version)
+        Sanctuary NDI \(version) (\(build))
+        App location: \(Bundle.main.bundlePath)
         macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)
         Architecture: \(SystemInfo.architecture)
         Status: \(status.rawValue)
@@ -394,6 +612,7 @@ final class AppState: ObservableObject {
         Display UUID: \(identity)
         Resolution: \(Int(frameSize.width))×\(Int(frameSize.height))
         Frame rate: \(preferences.frameRate)
+        Show mouse pointer: \(preferences.showsCursor ? "yes" : "no")
         NDI source: \(preferences.sourceName)
         NDI runtime: \(NDISender.runtimeVersion)
         Projector NDI receivers: \(projectorBroadcast.sender.connections)
@@ -402,15 +621,33 @@ final class AppState: ObservableObject {
         User NDI source: \(preferences.userSourceName)
         User NDI receivers: \(userBroadcast.sender.connections)
         User feed: \(userBroadcast.status.rawValue) — \(userBroadcast.detail)
+        Connected displays:
+        \(displays.isEmpty ? "  (none visible)" : displays)
         Operating mode: \(activeMode?.title ?? "Startup wizard")
-        Confidence mirror: \(confidenceMirrorEnabled ? "on" : "off")
+        Last wizard choice: \(preferences.lastMode?.title ?? "None")
+        Confidence mirror: \(confidenceStatus)
+        Confidence display: \(preferences.confidenceDisplay?.name ?? "Not selected")
+        ProPresenter: \(proPresenterRunning ? "running" : (proPresenterInstalled ? "installed, not running" : "not found"))
         Projector control: \(preferences.magewellEnabled ? "enabled" : "disabled")
         Projector receiver: \(preferences.magewellAddress.isEmpty ? "not configured" : preferences.magewellAddress)
+        Receiver username: \(preferences.magewellUsername.isEmpty ? "not set" : "set")
+        Receiver password: \(magewellPassword.isEmpty ? "not saved" : "saved in Keychain")
+        ProPresenter source match: \(preferences.proPresenterSourceMatch)
+        Monitor source match: \(preferences.screenMirrorSourceMatch)
+        Last receiver result: \(receiverTestMessage)
+        Receiver sources:
+        \(sources)
         Screen recording permission: \(CGPreflightScreenCaptureAccess() ? "granted" : "not granted")
         Launch at Login: \(LoginItemManager.statusDescription)
         """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    func copyRecentLog() async {
+        let log = await RecentLog.text(subsystem: Bundle.main.bundleIdentifier ?? "SanctuaryNDI")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(log, forType: .string)
     }
 
     func showAbout() {
@@ -433,6 +670,7 @@ enum BroadcastError: LocalizedError { case displayDisappeared }
 
 enum StartupWorkflowError: LocalizedError {
     case proPresenterNotRunning
+    case proPresenterNotInstalled
     case screenPermissionRequired
     case inputDisplayMissing
     case confidenceDisplayMissing
@@ -440,10 +678,11 @@ enum StartupWorkflowError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .proPresenterNotRunning: "Open ProPresenter before continuing."
+        case .proPresenterNotRunning: "ProPresenter did not finish opening. Open it, then choose Recheck & Retry."
+        case .proPresenterNotInstalled: "ProPresenter was not found in the Applications folder. Open it manually, then try again."
         case .screenPermissionRequired: "Allow Screen Recording in System Settings, then return and try again."
-        case .inputDisplayMissing: "Choose the Left/Projector Monitor in Settings before continuing."
-        case .confidenceDisplayMissing: "Choose the confidence monitor in Settings, or turn off duplication."
+        case .inputDisplayMissing: "Choose which connected monitor is the input monitor before continuing."
+        case .confidenceDisplayMissing: "Choose a connected confidence monitor, or choose Projector only."
         case .broadcastFailed(let detail): "The monitor feed could not start. \(detail)"
         }
     }

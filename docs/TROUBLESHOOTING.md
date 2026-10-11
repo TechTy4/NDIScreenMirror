@@ -28,7 +28,9 @@ See [architecture](ARCHITECTURE.md#recovery-and-readiness) for retry timing. Ret
 2. Check that the installed copy in Applications is the one you launch—not a Debug build, an older copy, or the copy inside a mounted DMG.
 3. In System Settings → Privacy & Security → Screen Recording (wording varies with macOS), enable Sanctuary NDI.
 4. Reopen the installed app, following any macOS restart instruction.
-5. If permission is still unavailable, use Settings → Support to open the privacy panel and copy diagnostics.
+5. If permission is still unavailable, use Settings → Support to check the Screen Recording status, open the privacy panel, use **Relaunch Sanctuary NDI**, and copy diagnostics.
+
+On recent macOS versions a system dialog may also say the app is “requesting to bypass the system private window picker.” That is macOS's periodic Screen Recording confirmation for apps that capture without a picker; choose **Allow** for the installed copy. Development builds signed differently from the installed app trigger it again.
 
 The packaged Release build uses a stable certificate-backed code signature to avoid treating every rebuild as a different application. Ad-hoc builds, changing signing identity, modifying the bundle, or launching multiple differently signed copies can invalidate prior approval. Do not re-sign the installed app as a routine troubleshooting step.
 
@@ -36,7 +38,7 @@ Screen Recording applies to both feeds, even in ProPresenter mode. Grant Local N
 
 ## Settings or a display picker seems unresponsive
 
-Settings should open a normal window and temporarily show a Dock icon. Click that Dock icon or use application/window switching if the window is behind another app. In Displays, click Refresh Connected Monitors.
+Settings should open a normal window and temporarily show a Dock icon. Opening the app again from Finder or Launchpad also opens Settings. Click that Dock icon or use application/window switching if the window is behind another app. In Displays, click Refresh Connected Monitors.
 
 A missing previously selected display may appear unselected even though its saved identity still exists. Choose a connected replacement. Input and User picker placeholder rows are not reset commands; only the confidence role supports clearing its selection.
 
@@ -44,7 +46,7 @@ If using an old build from before the native-window picker changes, install the 
 
 ## Selected Display Missing
 
-Reconnect the intended screen and use Recheck Availability. If the hardware was replaced, choose the new screen in Settings → Displays.
+Reconnect the intended screen and use Recheck Availability. If the hardware was replaced, choose the new screen in Settings → Displays (Identify Screens shows which monitor is which). The wizard also offers an inline picker when its monitor is missing.
 
 The app intentionally avoids unrelated-display fallback. Matching cannot guarantee identity when identical displays lack useful serials or UUIDs, so ambiguous matches require a manual choice. Rearranging screens should not ordinarily change their roles.
 
@@ -73,12 +75,12 @@ The v1.2.2 development session successfully received video by a direct loopback 
 
 ## Magewell login or source selection fails
 
-Open Settings → Projector and confirm automatic control, local address, account, saved password, and both source-match strings. Use Save Password & Test first.
+Open Settings → Projector and confirm automatic control, local address, account, saved password, and both source-match strings. Use Save Password & Test first: it lists the sources the receiver sees and shows what each match setting finds. Use **Switch the projector now** to test routing directly.
 
 - Authentication failure: correct the username/password. Recheck does not repair credentials.
 - No matching source: ensure the sender exists and has started. Rename the match to a distinctive portion of the actual discovered name.
 - Multiple possible sources: use the full name or a unique substring.
-- Monitor source renamed: update Monitor source contains as well.
+- Monitor source renamed: the match follows the rename when it was the old name or ended in `(old name)`; otherwise update it (or click Use for Monitor after a new test).
 - Unsupported API/firmware response: collect diagnostics and firmware/model information. Current and legacy APIs are implemented, but actual decoder behavior still requires on-site validation.
 
 Never paste passwords, cookie values, or your `.env` into a public issue. Prefer a redacted diagnostics report.
@@ -91,7 +93,7 @@ This is a borderless fullscreen output window showing the input monitor—not ma
 
 ## Login, sleep, or wake problems
 
-Launch at Login needs macOS Login Items approval. Start the installed Applications copy once, enable the preference, and check system approval.
+Launch at Login needs macOS Login Items approval. Start the installed Applications copy once, enable the preference, and check the Login item row in Settings → General; **Open Login Items…** goes straight to the approval switch.
 
 Both feeds pause during sleep. Wake refreshes screens after a short delay and recovers captures. If a display reconnects late, Recheck Availability refreshes it without changing saved roles.
 
@@ -99,6 +101,6 @@ For a repeatable problem, include whether it happened after login, wake, monitor
 
 ## Support and safe fallback
 
-Copy Diagnostics includes configuration/status metadata but no passwords or frame contents. It can still contain identifying display or local-network information; review and redact it before posting publicly.
+Copy Diagnostics includes configuration/status metadata but no passwords or frame contents. Copy Recent Log adds the app's own recent log lines (startup, display changes, capture interruptions, wizard and receiver results). If all else fails, Reset All Settings… returns to first-launch defaults. It can still contain identifying display or local-network information; review and redact it before posting publicly.
 
 Before a service, retain a known-working app installer and note current monitor roles/source matches. If automatic routing cannot be verified, disable it and select the intended source manually on the Magewell. This fallback still requires an actual working NDI source and receiver; it does not bypass a failed capture or network.

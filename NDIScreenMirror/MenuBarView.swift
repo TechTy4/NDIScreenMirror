@@ -8,10 +8,15 @@ struct MenuBarView: View {
         VStack(alignment: .leading) {
             Label(appState.status.rawValue, systemImage: appState.status.symbolName)
                 .foregroundStyle(statusColor)
-            Text(appState.detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            Text(appState.projectorSummary)
+            Text("Projector feed: \(appState.projectorBroadcast.status.rawValue)")
+            Text("User feed: \(appState.userBroadcast.status.rawValue)")
+            if appState.confidenceMirrorEnabled {
+                Text("Confidence monitor: \(appState.confidenceStatus)")
+            }
+            if !appState.screenPermissionGranted {
+                Button("Allow Screen Recording…") { appState.openScreenRecordingSettings() }
+            }
 
             Divider()
             Button(appState.preferences.screenConfigurationMenuTitle) { appState.openStartupWizard() }

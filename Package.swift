@@ -14,7 +14,7 @@ let package = Package(
                 "DisplayManager.swift", "LoginItemManager.swift", "MenuBarView.swift",
                 "Info.plist", "KeychainStore.swift",
                 "NDIBridge.c", "NDIBridge.h", "NDIScreenMirror-Bridging-Header.h",
-                "NDISender.swift", "Resources", "SanctuaryNDI.entitlements",
+                "NDISender.swift", "RecentLog.swift", "Resources", "ScreenIdentifier.swift", "SanctuaryNDI.entitlements",
                 "SanctuaryNDIApp.swift", "SettingsView.swift", "SettingsWindowController.swift",
                 "StartupWizardView.swift", "WizardWindowController.swift"
             ],

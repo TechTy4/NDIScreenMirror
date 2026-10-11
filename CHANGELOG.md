@@ -2,6 +2,32 @@
 
 Release dates below use the published GitHub release dates. This history describes shipped changes; hardware acceptance limitations are recorded separately in [Testing](docs/TESTING.md).
 
+## [1.3.0](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.3.0) — 2026-10-11
+
+Ease of use, stability, and troubleshooting.
+
+Easier everyday use:
+- The wizard pre-selects the last successful choice, so routine startup is just Start (Next → Start in monitor mode).
+- ProPresenter mode opens ProPresenter automatically when it is not running (**Open ProPresenter & Start**) and waits longer for its NDI output.
+- Inline monitor pickers in the wizard when a role is unset or disconnected, plus a Screen Recording permission banner with Open System Settings / Relaunch.
+- **Identify Screens** labels every physical monitor with its number, name, and role; monitors are numbered so identical models can be told apart.
+- The menu shows what the projector is showing and each feed's status, and offers Allow Screen Recording when it is missing.
+- Reopening the app (or launching a second copy) brings up Settings instead of creating duplicate NDI sources.
+
+Stability:
+- Display reconfiguration events are debounced; the confidence window no longer flickers on each refresh and is not re-shown while asleep.
+- The confidence output is hidden only after ProPresenter routing succeeds.
+- Receiver operations from the wizard and Settings are serialized.
+- Renaming the projector feed keeps the receiver match in sync and rejects a name equal to the User feed.
+- Fixed a data race on the NDI sender frame rate.
+
+Technical options:
+- Receiver test lists discovered sources with Use for ProPresenter / Use for Monitor, and each match shows what it finds.
+- Switch the projector now (manual routing), live receiver counts, Login Items status with a shortcut, Relaunch, Copy Recent Log, richer diagnostics, and Reset All Settings….
+- The DMG name now follows the built app version.
+
+Validation: 21 core tests, runtime retry regression, Debug/Release builds, and an independent model review. On-site hardware acceptance remains pending.
+
 ## Documentation update — 2026-10-11
 
 Added a documentation index, complete settings reference, troubleshooting, architecture/security notes, testing and on-site acceptance checklist, original brief, and conversation/decision record. No application behavior or release asset changes.

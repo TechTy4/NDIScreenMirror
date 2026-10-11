@@ -84,8 +84,7 @@ final class MonitorBroadcast: ObservableObject {
             guard let screen = content.displays.first(where: { $0.displayID == display.id }) else {
                 throw BroadcastError.displayDisappeared
             }
-            sender.frameRate = configuration.frameRate
-            try sender.start(name: configuration.name)
+            try sender.start(name: configuration.name, frameRate: configuration.frameRate)
             try await capture.start(display: screen, frameRate: configuration.frameRate, showsCursor: configuration.cursor)
             try await capture.waitForFirstFrame()
             running = configuration

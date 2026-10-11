@@ -10,7 +10,7 @@ final class WizardWindowController: NSObject, NSWindowDelegate {
         self.onFinish = onFinish
         let hostingController = NSHostingController(rootView: StartupWizardView().environmentObject(appState))
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 580),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false

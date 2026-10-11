@@ -7,19 +7,20 @@ final class NDISender: @unchecked Sendable {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "SanctuaryNDI", category: "NDI")
     private let lock = NSLock()
     private var sender: OpaquePointer?
-    var frameRate = 60
+    private var frameRate = 60
 
     static var runtimeVersion: String { String(cString: SNDIRuntimeVersion()) }
     static var runtimeAvailable: Bool { SNDIRuntimeIsAvailable() }
 
-    func start(name: String) throws {
+    func start(name: String, frameRate: Int) throws {
         lock.lock()
         defer { lock.unlock() }
         stopUnlocked()
+        self.frameRate = frameRate
         var error = [CChar](repeating: 0, count: 512)
         sender = name.withCString { SNDISenderCreate($0, &error, Int32(error.count)) }
         guard sender != nil else { throw NDIError.creation(String(cString: error)) }
-        logger.info("NDI sender created: \(name, privacy: .public)")
+        logger.info("NDI sender created: \(name, privacy: .public) at \(frameRate) fps")
     }
 
     func stop() {

@@ -7,13 +7,19 @@ final class ConfidenceMirrorController: @unchecked Sendable {
     private let displayLayer = AVSampleBufferDisplayLayer()
     private let renderQueue = DispatchQueue(label: "org.sanctuary.ndi.confidence-display", qos: .userInteractive)
     private var window: NSWindow?
+    private var shownDisplayID: CGDirectDisplayID?
     private var isDisplaying = false
+
+    @MainActor var isShowing: Bool { window != nil }
+    @MainActor var displayID: CGDirectDisplayID? { shownDisplayID }
 
     @MainActor
     func show(on display: DisplayDescriptor) throws {
         guard let screen = NSScreen.screens.first(where: {
             ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display.id
         }) else { throw ConfidenceMirrorError.displayUnavailable }
+        // Display refreshes are frequent; keep an unchanged output window instead of flickering it.
+        if let window, shownDisplayID == display.id, window.frame == screen.frame { return }
 
         hide()
         let view = NSView(frame: screen.frame)
@@ -40,6 +46,7 @@ final class ConfidenceMirrorController: @unchecked Sendable {
         window.setFrame(screen.frame, display: true)
         window.orderFrontRegardless()
         self.window = window
+        shownDisplayID = display.id
         renderQueue.async { [weak self] in self?.isDisplaying = true }
     }
 
@@ -47,6 +54,7 @@ final class ConfidenceMirrorController: @unchecked Sendable {
     func hide() {
         window?.orderOut(nil)
         window = nil
+        shownDisplayID = nil
         renderQueue.async { [weak self] in
             self?.isDisplaying = false
             self?.displayLayer.flushAndRemoveImage()

@@ -196,6 +196,18 @@ Outcome summary of this documentation pass:
 - Kept receiver credentials, environment-file contents, signing-account details, and frame contents out of public documentation.
 - Documentation-only changes do not constitute a new application version, retest the hardware, or replace the v1.2.2 release asset.
 
+## 10. Usability, stability, and troubleshooting pass
+
+User:
+
+> Can you please look through everything in this folder, understand the context, make sure everything is correct and then make improvements to help user usability and stability to make this as easy to use as possible while still achieving everything we are trying to accomplish and having options for me to troubleshoot/perform more technical actions. When finished, have ChatGPT 6.1 sol review. Address anything it brings up then when finished build test and push to github
+
+Outcome summary: [v1.3.0](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.3.0), October 11, 2026. See the [changelog](../CHANGELOG.md#130--2026-10-11) for the full list. Highlights: remembered wizard choice, automatic ProPresenter opening, inline monitor pickers, Identify Screens, richer menu status, single-instance handling, debounced display refreshes, and Settings tools for receiver discovery, manual switching, logs, relaunch, and reset.
+
+The mandatory every-launch wizard, the two always-on feeds, and the minimal menu structure were deliberately kept. The previous choice is only pre-selected; nothing is routed until Start is clicked.
+
+GPT-6.1-Sol (via the Codex CLI) reviewed the change and reported four issues: concurrent wizard/Settings receiver operations, host-qualified match names not following a rename, Reset leaving session state and pending tasks, and identical monitors being indistinguishable. All four were fixed before release. On-site hardware acceptance remains pending.
+
 ## Decisions that supersede the original brief
 
 | Original request | Later decision / current result |

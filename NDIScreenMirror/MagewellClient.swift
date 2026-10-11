@@ -182,6 +182,19 @@ actor MagewellClient {
         return match
     }
 
+    /// Plain-language result of matching one setting against discovered sources, for Settings.
+    nonisolated static func matchSummary(_ requestedName: String, in sources: [MagewellSource]) -> String {
+        do {
+            return "Matches “\(try bestMatch(requestedName, in: sources).name)”"
+        } catch MagewellError.sourceNameMissing {
+            return "No match text entered"
+        } catch {
+            let needle = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let count = sources.filter { $0.name.localizedCaseInsensitiveContains(needle) }.count
+            return count == 0 ? "No discovered source matches" : "\(count) sources match — use more specific text"
+        }
+    }
+
     private nonisolated static func sourceName(in item: [String: Any]) -> String? {
         if let value = item["ndi-name"] as? String, !value.isEmpty { return value }
         guard let config = item["config"] as? [String: Any] else { return item["name"] as? String }

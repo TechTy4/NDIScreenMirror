@@ -8,7 +8,7 @@ NDI® is a registered trademark of Vizrt NDI AB. Learn more at [ndi.video](https
 
 Start with the [documentation index](docs/README.md) for the [settings reference](docs/SETTINGS.md), [troubleshooting](docs/TROUBLESHOOTING.md), [architecture](docs/ARCHITECTURE.md), and [testing/on-site acceptance](docs/TESTING.md). The repository also preserves the [development conversation and decisions](docs/CONVERSATION.md), [original build brief](docs/ORIGINAL_BRIEF.md), and [release changelog](CHANGELOG.md).
 
-The latest application release is [v1.2.2](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.2.2). Local build and receive checks have passed; the sanctuary three-monitor layout, church-LAN discovery, and physical Magewell switching still need [on-site verification](docs/TESTING.md#on-site-acceptance-checklist).
+The latest application release is [v1.3.0](https://github.com/TechTy4/NDIScreenMirror/releases/tag/v1.3.0), which focuses on ease of use, stability, and troubleshooting tools (see the [changelog](CHANGELOG.md)). Local build and automated checks have passed; the sanctuary three-monitor layout, church-LAN discovery, and physical Magewell switching still need [on-site verification](docs/TESTING.md#on-site-acceptance-checklist).
 
 ## Installation
 
@@ -25,7 +25,9 @@ The non-closable (but minimizable) wizard appears on every launch and asks:
 1. Should the projector show ProPresenter or the configured input monitor?
 2. In monitor mode, should the feed also be duplicated fullscreen on the configured confidence monitor?
 
-Both monitor feeds start automatically as soon as the app launches and their saved displays and Screen Recording permission are available, even while the wizard is open. ProPresenter mode requires ProPresenter to be running and leaves both feeds running. Monitor mode waits for the projector-monitor feed before asking the Magewell to switch. Errors remain in the wizard with actionable recovery instead of silently selecting another source.
+The previous successful answer is pre-selected, so a routine startup is usually just **Start** (or **Next → Start** in monitor mode). If a monitor role has not been chosen or its monitor is disconnected, the wizard shows a picker and an **Identify Screens** button right there. A banner explains how to allow Screen Recording when permission is missing.
+
+Both monitor feeds start automatically as soon as the app launches and their saved displays and Screen Recording permission are available, even while the wizard is open. In ProPresenter mode the wizard opens ProPresenter itself if it is installed but not running (**Open ProPresenter & Start**), waits for it, and leaves both feeds running. Monitor mode waits for the projector-monitor feed before asking the Magewell to switch. Errors remain in the wizard with actionable recovery instead of silently selecting another source.
 
 ## Display configuration
 
@@ -36,7 +38,7 @@ Settings → Displays assigns the input monitor, confidence monitor, and **User 
 To replace a monitor:
 
 1. Connect the new display.
-2. Open Sanctuary NDI Settings → Displays.
+2. Open Sanctuary NDI Settings → Displays and click **Identify Screens** to label every monitor with its number, name, and current role.
 3. Choose the new input, User, or confidence monitor.
 4. The new choice becomes the default immediately.
 
@@ -44,7 +46,7 @@ No source edits, Terminal commands, or rebuild are needed for normal display cha
 
 ## Magewell receiver control
 
-Settings → Projector stores the receiver's local address, username, and NDI source-match text. The password is stored only in macOS Keychain. The client supports both the current authenticated JSON API (`/api/user/login`, `/api/source/list`, `/api/source/select`) and legacy Pro Convert firmware (`/mwapi` login, discovery, and `set-channel`). Source matching prefers an exact name and otherwise requires one unambiguous case-insensitive substring match.
+Settings → Projector stores the receiver's local address, username, and NDI source-match text. The password is stored only in macOS Keychain. The client supports both the current authenticated JSON API (`/api/user/login`, `/api/source/list`, `/api/source/select`) and legacy Pro Convert firmware (`/mwapi` login, discovery, and `set-channel`). Source matching prefers an exact name and otherwise requires one unambiguous case-insensitive substring match. **Save Password & Test** lists every source the receiver can see, shows whether each match setting finds exactly one, and offers **Use for ProPresenter / Use for Monitor** buttons. **Switch the projector now** routes the receiver immediately without the wizard, for testing.
 
 Receiver address validation permits private/link-local/loopback IP addresses, `.local` hosts, localhost, and local unqualified hostnames. This is not an audited DNS/redirect isolation boundary. HTTP is supported for local receiver management; use a trusted LAN. See the [security notes](docs/ARCHITECTURE.md#security-privacy-and-deployment-boundaries) and Magewell's official [current decoder API](https://www.magewell.com/api-docs/pro-convert-ip-decoder-api/latest/) and [legacy decoder API](https://www.magewell.com/api-docs/pro-convert-decoder-api/).
 
@@ -67,7 +69,9 @@ At login, the wizard asks for the day's mode. Sleep, wake, display changes, capt
 - Selected Display Missing: reconnect it or choose its replacement in Settings → Displays.
 - NDI Error: use Copy Diagnostics and verify libndi.dylib exists in the app Contents/Frameworks folder.
 - Network temporarily unavailable: leave the app running; the sender remains available when the LAN returns.
-- Support snapshot: Copy Diagnostics includes version, OS/architecture, display identity, resolution, frame rate, runtime version, receiver count, permission, and login-item state. Screen content is never logged.
+- Support snapshot: Copy Diagnostics includes version, app location, OS/architecture, every connected display and its role, resolution, frame rate, runtime version, receiver counts, receiver settings (never the password), discovered sources, permission, and login-item state. **Copy Recent Log** copies this app's own log entries. Screen content is never logged.
+- Permission granted but still not working: Settings → Support → **Relaunch Sanctuary NDI**.
+- Start over: Settings → Support → **Reset All Settings…** (asks for confirmation; clears the saved password too).
 
 ## Architecture
 

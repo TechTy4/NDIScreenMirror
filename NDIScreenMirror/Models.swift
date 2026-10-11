@@ -94,10 +94,19 @@ struct DisplayDescriptor: Identifiable, Equatable, Sendable {
     let width: Int
     let height: Int
     let isMain: Bool
+    /// 1-based position in the current list, so identical monitors can be told apart.
+    /// It is not saved and not part of equality, so renumbering never restarts a feed.
+    var number = 0
 
     var displayName: String {
         let suffix = "\(width)×\(height)"
-        return identity.name.isEmpty ? "Display — \(suffix)" : "\(identity.name) — \(suffix)"
+        let name = identity.name.isEmpty ? "Display — \(suffix)" : "\(identity.name) — \(suffix)"
+        return number > 0 ? "Screen \(number): \(name)" : name
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.identity == rhs.identity && lhs.width == rhs.width &&
+            lhs.height == rhs.height && lhs.isMain == rhs.isMain
     }
 }
 
