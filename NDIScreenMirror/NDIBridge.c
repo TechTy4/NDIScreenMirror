@@ -47,7 +47,12 @@ static bool load_symbol(void **target, const char *name) {
 }
 
 static bool load_api(void) {
-    if (api.library) return api.initialized;
+    if (api.library) {
+        // Initialization may fail while networking is still coming online.
+        // Retry it instead of caching the first failure for the entire launch.
+        if (!api.initialized) api.initialized = api.initialize();
+        return api.initialized;
+    }
 
     // Receiver discovery probes may connect and immediately close. The NDI
     // runtime writes to those sockets; ignore SIGPIPE so a receiver disconnect

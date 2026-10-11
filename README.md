@@ -23,6 +23,8 @@ Both monitor feeds start automatically as soon as the app launches and their sav
 
 ## Display configuration
 
+Capture uses an explicit source rectangle in the selected monitor's local coordinates and even video dimensions, as required by the packed video pipeline. Each capture has its own stream and ignores callbacks from a stopped/replaced stream. On macOS 15.2 or newer the content filter is checked to contain exactly that display. See Apple's [sourceRect documentation](https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/sourcerect). Feed status includes the selected monitor and output resolution.
+
 Settings → Displays assigns the input monitor, confidence monitor, and **User screen (operator)**. The User screen initially selects the Mac's main display, then remembers your chosen physical monitor across launches. Two independent NDI feeds run in every projector mode: **Sanctuary Projector Screen** (the existing configurable input-feed name) and **Sanctuary User Screen**. The livestream computer can view either without changing the projector. Frame rate and mouse-pointer settings apply to both feeds. A disconnected monitor pauses only its own feed; reconnecting it restores that feed. The friendly input label defaults to **Left/Projector Monitor** and can be changed in General. Display choices are saved using the Core Graphics display UUID plus vendor, model, serial, name, and native-resolution fallbacks.
 
 To replace a monitor:
@@ -50,6 +52,8 @@ At login, the wizard asks for the day's mode. Sleep, wake, display changes, capt
 
 ## Troubleshooting
 
+- Still starting: the wizard waits for an actual video frame and retries transient receiver/network and source-discovery failures. Use **Recheck Availability** to refresh connected screens and failed feeds, or **Recheck & Retry** after a connection error to repeat the selected setup. **Stop Checking** stops the current connection attempt while keeping NDI feeds running. A bad password or invalid configuration still requires correcting Settings.
+- Screen enumeration unavailable at login: the app rechecks every five seconds while a configured display is missing and Screen Recording is allowed. NDI capture failures use exponential retry, and a failed first runtime initialization can now recover without restarting the app.
 - Projector connection failed: confirm the receiver is on the same LAN, verify its address and credentials in Settings → Projector, then run Save Password & Test.
 - Source not found: start ProPresenter or the monitor broadcast, then make the configured source-match text more distinctive.
 - No monitor NDI source: verify the input display in Settings → Displays and use Restart Both NDI Broadcasts under Support.
@@ -94,6 +98,10 @@ Debug build command:
 Logic tests:
 
     swift test
+
+NDI runtime startup regression check (uses an isolated fake runtime, not the live SDK):
+
+    zsh scripts/test-ndi-runtime-retry.sh
 
 For a live receive check, compile `scripts/verify-ndi-feeds.cpp` using the command at the top of that file. Run it without arguments to list discovered source names, then pass the exact projector and User source names to check video from both. It never saves screen contents. Run it with the wizard open and again after choosing ProPresenter; both feeds should remain available. Test disconnect/reconnect and sleep/wake with the room displays attached.
 

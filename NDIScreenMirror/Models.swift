@@ -114,3 +114,17 @@ struct RecoveryBackoff: Equatable, Sendable {
 
     mutating func reset() { attempt = 0 }
 }
+
+/// Source coordinates are local to one display, never the combined desktop.
+struct CaptureRegion: Equatable, Sendable {
+    let sourceRect: CGRect
+    let width: Int
+    let height: Int
+
+    init(displayBounds: CGRect) {
+        sourceRect = CGRect(origin: .zero, size: displayBounds.size)
+        // Packed NDI video needs even dimensions; SCK also rounds odd heights.
+        width = max(2, Int(displayBounds.width) / 2 * 2)
+        height = max(2, Int(displayBounds.height) / 2 * 2)
+    }
+}

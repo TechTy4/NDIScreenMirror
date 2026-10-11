@@ -18,7 +18,7 @@ let package = Package(
                 "SanctuaryNDIApp.swift", "SettingsView.swift", "SettingsWindowController.swift",
                 "StartupWizardView.swift", "WizardWindowController.swift"
             ],
-            sources: ["MagewellClient.swift", "Models.swift", "Preferences.swift"]
+            sources: ["AvailabilityRetry.swift", "MagewellClient.swift", "Models.swift", "Preferences.swift"]
         ),
         .testTarget(name: "SanctuaryCoreTests", dependencies: ["SanctuaryCore"])
     ]

@@ -118,6 +118,7 @@ struct StartupWizardView: View {
             .background(mode == candidate ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .disabled(appState.wizardIsWorking)
     }
 
     private func mirrorCard(enabled: Bool, title: String, detail: String, icon: String) -> some View {
@@ -139,14 +140,19 @@ struct StartupWizardView: View {
             .background(mirrorToConfidenceDisplay == enabled ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .disabled(appState.wizardIsWorking)
     }
 
     @ViewBuilder private var statusArea: some View {
         if let error = appState.wizardError {
-            Label(error, systemImage: "exclamationmark.triangle.fill")
-                .font(.callout).foregroundStyle(.red)
-        } else if appState.wizardIsWorking {
-            HStack { ProgressView(); Text(appState.wizardMessage).foregroundStyle(.secondary) }
+            ScrollView {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout).foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 80)
+        } else if appState.wizardIsWorking || appState.availabilityIsRechecking {
+            HStack { ProgressView(); Text(appState.availabilityIsRechecking ? "Rechecking screens and NDI feeds…" : appState.wizardMessage).foregroundStyle(.secondary) }
         } else {
             DisclosureGroup("Technical details", isExpanded: $showTechnicalDetails) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -164,19 +170,27 @@ struct StartupWizardView: View {
     private var footer: some View {
         HStack {
             Button("Settings…") { appState.openSettings() }
+            Button("Recheck Availability") { Task { await appState.recheckAvailability() } }
+                .disabled(appState.wizardIsWorking || appState.availabilityIsRechecking)
             Spacer()
-            if step == 1 { Button("Back") { step = 0 } }
-            Button(step == 0 && mode == .screenMirror ? "Next" : "Start") {
+            if appState.wizardIsWorking {
+                Button("Stop Checking") { appState.cancelWizardConnection() }
+            }
+            if step == 1 {
+                Button("Back") { step = 0 }
+                    .disabled(appState.wizardIsWorking)
+            }
+            Button(appState.wizardError != nil && (step == 1 || mode == .proPresenter) ? "Recheck & Retry" : (step == 0 && mode == .screenMirror ? "Next" : "Start")) {
                 guard let mode else { return }
                 if step == 0 && mode == .screenMirror {
                     step = 1
                 } else {
-                    Task { await appState.completeWizard(mode: mode, mirrorToConfidenceDisplay: mirrorToConfidenceDisplay) }
+                    appState.beginWizard(mode: mode, mirrorToConfidenceDisplay: mirrorToConfidenceDisplay)
                 }
             }
             .keyboardShortcut(.defaultAction)
             .disabled(
-                mode == nil || appState.wizardIsWorking ||
+                mode == nil || appState.wizardIsWorking || appState.availabilityIsRechecking ||
                 (mode == .proPresenter && !appState.proPresenterRunning) ||
                 (mode == .screenMirror && resolvedInputName == nil) ||
                 (step == 1 && mirrorToConfidenceDisplay && resolvedConfidenceName == nil) ||

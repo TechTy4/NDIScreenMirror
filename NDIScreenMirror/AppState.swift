@@ -16,6 +16,7 @@ final class AppState: ObservableObject {
     @Published var wizardIsWorking = false
     @Published var wizardMessage = ""
     @Published var wizardError: String?
+    @Published private(set) var availabilityIsRechecking = false
     @Published var receiverTestMessage = "Not tested"
     @Published var magewellPassword = KeychainStore.password()
     @Published var settingsTab: SettingsTab = .general
@@ -33,6 +34,8 @@ final class AppState: ObservableObject {
     private var processActivity: NSObjectProtocol?
     private var settingsWindowController: SettingsWindowController?
     private var wizardWindowController: WizardWindowController?
+    private var availabilityTask: Task<Void, Never>?
+    private var wizardTask: Task<Void, Never>?
 
     init() {
         projectorBroadcast.capture.onSampleBuffer = { [weak self] sampleBuffer in
@@ -79,6 +82,18 @@ final class AppState: ObservableObject {
         status = .awaitingSetup
         detail = "Choose how the projector should be used."
         await displayManager.refresh()
+        // Enumeration can be empty while the Mac's displays wake up.
+        availabilityTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, let self else { return }
+                guard !self.isSleeping, CGPreflightScreenCaptureAccess() else { continue }
+                if self.displayManager.displays.isEmpty ||
+                    [self.projectorBroadcast, self.userBroadcast].contains(where: { $0.status == .displayMissing || $0.status == .permissionRequired }) {
+                    await self.displayManager.refresh()
+                }
+            }
+        }
         refreshProPresenterState()
         openStartupWizard()
     }
@@ -164,6 +179,7 @@ final class AppState: ObservableObject {
     }
 
     func restartBroadcast() async {
+        await displayManager.refresh()
         configureBroadcasts(force: true)
         await projectorBroadcast.waitUntilSettled()
         await userBroadcast.waitUntilSettled()
@@ -173,6 +189,28 @@ final class AppState: ObservableObject {
     func settingsChanged(recreateSender: Bool = false) {
         configureBroadcasts()
     }
+
+    func recheckAvailability() async {
+        guard !availabilityIsRechecking else { return }
+        availabilityIsRechecking = true
+        wizardError = nil
+        defer { availabilityIsRechecking = false }
+        refreshProPresenterState()
+        await displayManager.refresh()
+        configureBroadcasts()
+        await projectorBroadcast.waitUntilSettled()
+        await userBroadcast.waitUntilSettled()
+        updateBroadcastStatus()
+    }
+
+    func beginWizard(mode: ProjectorInputMode, mirrorToConfidenceDisplay: Bool) {
+        guard !wizardIsWorking else { return }
+        wizardTask = Task { [weak self] in
+            await self?.completeWizard(mode: mode, mirrorToConfidenceDisplay: mirrorToConfidenceDisplay)
+        }
+    }
+
+    func cancelWizardConnection() { wizardTask?.cancel() }
 
     private func sleep() async {
         isSleeping = true
@@ -195,6 +233,9 @@ final class AppState: ObservableObject {
         wizardError = nil
         defer { wizardIsWorking = false }
         do {
+            wizardMessage = "Checking available screens and feeds…"
+            await displayManager.refresh()
+            try Task.checkCancellation()
             switch mode {
             case .proPresenter:
                 refreshProPresenterState()
@@ -220,9 +261,19 @@ final class AppState: ObservableObject {
                 try configureConfidenceMirror(enabled: mirrorToConfidenceDisplay)
                 wizardWindowController?.show()
                 wizardMessage = "Starting the monitor feed…"
-                configureBroadcasts()
-                await projectorBroadcast.waitUntilSettled()
-                guard projectorBroadcast.status == .broadcasting else { throw StartupWorkflowError.broadcastFailed(detail) }
+                try await AvailabilityRetry.run(attempts: 5, operation: {
+                    self.configureBroadcasts()
+                    await self.projectorBroadcast.waitUntilSettled()
+                    try Task.checkCancellation()
+                    guard self.projectorBroadcast.status == .broadcasting else {
+                        throw StartupWorkflowError.broadcastFailed(self.projectorBroadcast.detail)
+                    }
+                }, shouldRetry: { error in
+                    if case StartupWorkflowError.broadcastFailed = error { return true }
+                    return false
+                }, onRetry: { attempt in
+                    self.wizardMessage = "Waiting for the monitor feed… Rechecking (\(attempt)/5)."
+                })
                 if preferences.magewellEnabled {
                     wizardMessage = "Connecting the projector to the monitor feed…"
                     _ = try await selectReceiverSourceWithRetry(matching: preferences.screenMirrorSourceMatch)
@@ -234,6 +285,8 @@ final class AppState: ObservableObject {
             wizardWindowController?.finish()
             wizardWindowController = nil
             updateActivationPolicy()
+        } catch is CancellationError {
+            wizardError = "Connection check stopped. Choose Recheck & Retry when you are ready."
         } catch {
             wizardError = error.localizedDescription
         }
@@ -253,22 +306,16 @@ final class AppState: ObservableObject {
     }
 
     private func selectReceiverSourceWithRetry(matching name: String) async throws -> MagewellSource {
-        var lastError: Error = MagewellError.sourceNotFound(name, [])
-        for attempt in 0..<15 {
-            do {
-                return try await magewell.selectSource(
+        try await AvailabilityRetry.run(operation: {
+            try await self.magewell.selectSource(
                     matching: name,
-                    address: preferences.magewellAddress,
-                    username: preferences.magewellUsername,
-                    password: magewellPassword
+                    address: self.preferences.magewellAddress,
+                    username: self.preferences.magewellUsername,
+                    password: self.magewellPassword
                 )
-            } catch let error as MagewellError {
-                lastError = error
-                guard case .sourceNotFound = error, attempt < 14 else { throw error }
-                try await Task.sleep(for: .seconds(1))
-            }
-        }
-        throw lastError
+        }, shouldRetry: AvailabilityRetry.receiverMayBecomeAvailable, onRetry: { attempt in
+            self.wizardMessage = "Waiting for the projector receiver or NDI source… Rechecking (\(attempt)/15)."
+        })
     }
 
     func testMagewellConnection() {

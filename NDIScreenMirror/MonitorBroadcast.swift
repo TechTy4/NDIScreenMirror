@@ -87,10 +87,12 @@ final class MonitorBroadcast: ObservableObject {
             sender.frameRate = configuration.frameRate
             try sender.start(name: configuration.name)
             try await capture.start(display: screen, frameRate: configuration.frameRate, showsCursor: configuration.cursor)
+            try await capture.waitForFirstFrame()
             running = configuration
             backoff.reset()
             status = .broadcasting
-            detail = configuration.name
+            let region = CaptureRegion(displayBounds: CGDisplayBounds(display.id))
+            detail = "\(configuration.name) — \(display.displayName), \(region.width)×\(region.height) video"
         } catch {
             await capture.stop()
             sender.stop()

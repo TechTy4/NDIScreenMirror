@@ -81,6 +81,8 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.orange)
                 }
                 Button("Refresh Connected Monitors") { Task { await appState.displayManager.refresh() } }
+                Text("The User feed captures only the selected physical screen, not the combined desktop.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Always-on NDI feeds") {
@@ -141,6 +143,8 @@ struct SettingsView: View {
             Section("Permissions and recovery") {
                 Button("Request Screen Recording Permission") { appState.requestScreenPermission() }
                 Button("Open Screen Recording Settings") { appState.openScreenRecordingSettings() }
+                Button("Recheck Availability") { Task { await appState.recheckAvailability() } }
+                    .disabled(appState.availabilityIsRechecking || appState.wizardIsWorking)
                 Button("Restart Both NDI Broadcasts") { Task { await appState.restartBroadcast() } }
             }
             Section("Diagnostics") {

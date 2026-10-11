@@ -2,6 +2,71 @@ import XCTest
 @testable import SanctuaryCore
 
 final class SanctuaryCoreTests: XCTestCase {
+    func testCaptureRegionStaysLocalToOneMonitor() {
+        // The screen is left of and above the main monitor. Its global origin
+        // must never expand the captured region to the whole desktop.
+        let region = CaptureRegion(displayBounds: CGRect(x: -2560, y: -400, width: 2560, height: 1440))
+        XCTAssertEqual(region.sourceRect, CGRect(x: 0, y: 0, width: 2560, height: 1440))
+        XCTAssertEqual(region.width, 2560)
+        XCTAssertEqual(region.height, 1440)
+    }
+
+    func testCaptureRegionUsesEvenVideoDimensionsForScaledMonitor() {
+        let region = CaptureRegion(displayBounds: CGRect(x: 1920, y: 0, width: 1800, height: 1169))
+        XCTAssertEqual(region.sourceRect.height, 1169)
+        XCTAssertEqual(region.width, 1800)
+        XCTAssertEqual(region.height, 1168)
+    }
+
+    func testStartupRetryWaitsForReceiverAndNDIDiscovery() async throws {
+        var calls = 0
+        var retries = 0
+        let value = try await AvailabilityRetry.run(attempts: 4, operation: {
+            calls += 1
+            if calls == 1 { throw URLError(.cannotConnectToHost) }
+            if calls == 2 { throw MagewellError.sourceNotFound("Monitor", []) }
+            return "ready"
+        }, shouldRetry: AvailabilityRetry.receiverMayBecomeAvailable,
+           onRetry: { _ in retries += 1 }, pause: {})
+        XCTAssertEqual(value, "ready")
+        XCTAssertEqual(calls, 3)
+        XCTAssertEqual(retries, 2)
+    }
+
+    func testStartupRetryStopsForBadCredentials() async {
+        var calls = 0
+        do {
+            _ = try await AvailabilityRetry.run(operation: {
+                calls += 1
+                throw MagewellError.authenticationFailed
+            }, shouldRetry: AvailabilityRetry.receiverMayBecomeAvailable, pause: {})
+            XCTFail("Expected authentication error")
+        } catch { XCTAssertEqual(error as? MagewellError, .authenticationFailed) }
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testStartupRetryExhaustionAndCancellation() async {
+        var calls = 0
+        do {
+            _ = try await AvailabilityRetry.run(attempts: 3, operation: {
+                calls += 1
+                throw URLError(.timedOut)
+            }, shouldRetry: AvailabilityRetry.receiverMayBecomeAvailable, pause: {})
+            XCTFail("Expected timeout")
+        } catch { XCTAssertEqual((error as? URLError)?.code, .timedOut) }
+        XCTAssertEqual(calls, 3)
+        calls = 0
+        do {
+            _ = try await AvailabilityRetry.run(operation: {
+                calls += 1
+                throw URLError(.cannotConnectToHost)
+            }, shouldRetry: AvailabilityRetry.receiverMayBecomeAvailable,
+               pause: { throw CancellationError() })
+            XCTFail("Expected cancellation")
+        } catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(calls, 1)
+    }
+
     func testMagewellSourceMatchingPrefersExactThenUniqueSubstring() throws {
         let sources = [
             MagewellSource(id: 1, name: "SANCTUARY (ProPresenter)", address: "10.0.0.1:5961"),
